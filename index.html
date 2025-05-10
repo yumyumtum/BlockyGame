@@ -1,143 +1,600 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Dodge Game Evolved</title>
+  <meta charset="utf-8">
+  <title>Starry Universe Shooter</title>
   <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      background: #111;
-      color: white;
-      font-family: Arial, sans-serif;
-    }
-
-    canvas {
-      display: block;
-      margin: 0 auto;
-      background: #222;
-      border: 2px solid #fff;
-    }
-
-    #menu {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: white;
-      background-color: rgba(0, 0, 0, 0.8);
-      padding: 40px;
-      border: 2px solid white;
-      text-align: center;
-      display: none;
-    }
-
-    #menu h1 {
-      margin-bottom: 20px;
-    }
-
-    .menu-button {
-      display: block;
-      width: 200px;
-      margin: 10px auto;
-      padding: 10px;
-      font-size: 18px;
-      background: #333;
-      color: white;
-      border: 2px solid white;
-      cursor: pointer;
-    }
-
-    .menu-button:hover {
-      background: #555;
-    }
+    body { margin: 0; overflow: hidden; background: black; }
+    canvas { display: block; }
   </style>
 </head>
 <body>
-  <canvas id="gameCanvas" width="400" height="600"></canvas>
-  <div id="menu">
-    <h1>Game Over</h1>
-    <p id="finalScore"></p>
-    <button class="menu-button" onclick="restartGame()">Restart</button>
-    <button class="menu-button" onclick="quitGame()">Quit</button>
-  </div>
+  <canvas id="gameCanvas"></canvas>
 
-  <!-- Bandit and Tore Up songs -->
-  <audio id="banditSong" src="URL_TO_BANDIT_SONG.mp3" preload="auto"></audio>
-  <audio id="toreUpSong" src="URL_TO_TORE_UP_SONG.mp3" preload="auto"></audio>
-
-  <div id="startButtonDiv" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
-    <button class="menu-button" onclick="startGame()">Start Game</button>
-  </div>
+  <!-- Sound assets -->
+  <audio id="shootSound"     src="shoot.mp3"></audio>
+  <audio id="missileSound"   src="missile.mp3"></audio>
+  <audio id="pickupSound"    src="pickup.mp3"></audio>
+  <audio id="explosionSound" src="explosion.mp3"></audio>
+  <audio id="laserSound"     src="laser.mp3"></audio>
+  <audio id="bgm"></audio>
 
   <script>
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    const menu = document.getElementById('menu');
-    const finalScore = document.getElementById('finalScore');
-    const banditSong = document.getElementById('banditSong');
-    const toreUpSong = document.getElementById('toreUpSong');
-    const startButtonDiv = document.getElementById('startButtonDiv');
+    // — BGM (1→2→3 loop) —
+    const bgmFiles = ["bgm/background.mp3","bgm/DestroyThemAll.mp3","bgm/Starfield.mp3"];
+    const bgm = document.getElementById('bgm');
+    let bgmIndex = 0;
+    bgm.volume = 0.8;
+    function playNextBGM() {
+      bgm.src = bgmFiles[bgmIndex]; bgm.play().catch(()=>{});
+      bgmIndex = (bgmIndex + 1) % bgmFiles.length;
+    }
+    bgm.addEventListener('ended', playNextBGM);
+    window.addEventListener('click',  playNextBGM, { once:true });
+    window.addEventListener('keydown', playNextBGM, { once:true });
 
-    let player, blocks, score, keys, highScore = 0;
-    let arrows = [], missiles = [], explosions = [];
-    let gameRunning = true;
-    let spawnInterval;
-    let warningTimer = 0;
-    let startTime;
+    // — Level scaling every 1m (×1.2), reset at lvl 5 —
+    let speedMultiplier = 1, level = 1;
+    setInterval(() => {
+      const prev = speedMultiplier;
+      level++;
+      if (level === 5) {
+        enemies.forEach(e=>{ e.vx /= prev; e.vy /= prev; });
+        enemyBullets.forEach(b=>{ b.speed /= prev; });
+        speedMultiplier = 1;
+      } else {
+        speedMultiplier *= 1.2;
+        enemies.forEach(e=>{ e.vx *= 1.2; e.vy *= 1.2; });
+        enemyBullets.forEach(b=>{ b.speed *= 1.2; });
+      }
+      playNextBGM();
+    }, 60000);
 
-    // Start the game and play Bandit and then Tore Up
-    function startGame() {
-      startButtonDiv.style.display = 'none';  // Hide the Start Game button
+    // — Canvas & Images —
+    const canvas = document.getElementById('gameCanvas'),
+          ctx    = canvas.getContext('2d');
+    canvas.width  = innerWidth;
+    canvas.height = innerHeight;
 
-      // Start Bandit song
-      banditSong.play().then(() => {
-        banditSong.onended = () => {
-          // Once Bandit ends, start Tore Up
-          toreUpSong.play().then(() => {
-            // Once Tore Up finishes, start the game
-            initGame();
-          }).catch(e => console.log("Error playing Tore Up song:", e));
-        };
-      }).catch(e => console.log("Error playing Bandit song:", e));
+    const imgNormal = new Image(); imgNormal.src   = 'rocket_50x50.png';
+    const imgLeft   = new Image(); imgLeft.src     = 'rocket_50x50_left.png';
+    const imgRight  = new Image(); imgRight.src    = 'rocket_50x50_right.png';
+    const imgShadow = new Image(); imgShadow.src   = 'shadow_ship.png';
+
+    // — Sounds —
+    const shootSound     = document.getElementById('shootSound'),
+          missileSound   = document.getElementById('missileSound'),
+          pickupSound    = document.getElementById('pickupSound'),
+          explosionSound = document.getElementById('explosionSound'),
+          laserSound     = document.getElementById('laserSound');
+    [shootSound, missileSound, pickupSound, explosionSound, laserSound]
+      .forEach(s=>s.volume=0.5);
+
+    // — State —
+    let spaceship = { x:canvas.width/2-25, y:canvas.height-70, width:50, height:50, speed:5 };
+    let bullets = [], missiles = [], enemies = [], enemyBullets = [];
+    let stars = [], backgroundStars = [], assistShips = [], shadowShips = [], hexItems = [];
+    let gameOver=false, paused=false, keys={}, rocketCount=0, killCount=0, goldenStars=0;
+    let lastShotTime=0, gameStartTime=Date.now(), gameOverHandled=false;
+
+    // Laser & cooldown
+    let spacePressTime=0, laserActive=false, laserEndTime=0, lastLaserTime=Date.now()-20000;
+    // Undead
+    let undeadActive=false, undeadEndTime=0;
+    // Shadow buff
+    let shadowBuffActive=false, shadowBuffStart=0, shadowBuffEnd=0;
+
+    // Rankings
+    let scores = JSON.parse(localStorage.getItem('scores')||'[]');
+
+    // — Background starfield —
+    for(let i=0;i<150;i++){
+      backgroundStars.push({
+        x:Math.random()*canvas.width,
+        y:Math.random()*canvas.height,
+        baseR:Math.random()*1.5+0.5,
+        twinkleSpeed:0.02+Math.random()*0.03,
+        twinklePhase:Math.random()*2*Math.PI,
+        speed:0.3+Math.random()*0.2
+      });
     }
 
-    function initGame() {
-      player = { x: 180, y: 550, width: 40, height: 40, speed: 5, health: 2, level: 0 };
-      blocks = [];
-      arrows = [];
-      missiles = [];
-      explosions = [];
-      score = 0;
-      keys = {};
-      warningTimer = 0;
-      gameRunning = true;
-      menu.style.display = 'none';
-      startTime = Date.now();
-      clearInterval(spawnInterval);
-      spawnInterval = setInterval(spawnBlock, 800);
-      gameLoop();
+    // — Helpers —
+    function isColliding(a,b){
+      return !(a.x>b.x+b.width||a.x+a.width<b.x||a.y>b.y+b.height||a.y+a.height<b.y);
+    }
+    function spawnShadow(){
+      const w=30,h=30, len=shadowShips.length;
+      let ox=0, oy=0;
+      if(len===0){ ox=-30; oy=spaceship.height+5; }
+      else if(len===1){ ox= 30; oy=spaceship.height+5; }
+      else           { ox=  0; oy=-(h+5); }
+      shadowShips.push({ offsetX:ox, offsetY:oy, width:w, height:h });
     }
 
-    function spawnBlock() {
-      // Block spawning logic here...
+    // — Input handling —
+    document.addEventListener('keydown', e=>{
+      if(e.key==='Enter'){ paused=!paused; return; }
+      if(paused||gameOver) return;
+      if(e.key===' '){
+        if(e.repeat) return;
+        spacePressTime=Date.now(); keys[' ']=true;
+        if(Date.now()-lastShotTime>=500){
+          lastShotTime=Date.now();
+          shootSound.currentTime=0; shootSound.play();
+          bullets.push({ x:spaceship.x+25-2.5, y:spaceship.y, width:5, height:10, speed:7 });
+          if(goldenStars>=1){
+            bullets.push({x:spaceship.x+10,y:spaceship.y,width:5,height:10,vx:-1,vy:-7});
+            bullets.push({x:spaceship.x+40-5,y:spaceship.y,width:5,height:10,vx: 1,vy:-7});
+          }
+          if(goldenStars>=2){
+            bullets.push({x:spaceship.x+5, y:spaceship.y,width:5,height:10,vx:-2,vy:-7});
+            bullets.push({x:spaceship.x+45-5,y:spaceship.y,width:5,height:10,vx: 2,vy:-7});
+          }
+          shadowShips.forEach(s=>{
+            bullets.push({
+              x:spaceship.x+25-2.5+s.offsetX,
+              y:spaceship.y+s.offsetY,
+              width:5,height:10,speed:7
+            });
+          });
+        }
+      } else keys[e.key]=true;
+
+      if(e.key==='2'&&rocketCount>0){
+        rocketCount--; missileSound.currentTime=0; missileSound.play();
+        for(let i=-1;i<=1;i++){
+          missiles.push({
+            x:spaceship.x+25-5+i*5,
+            y:spaceship.y+50,
+            width:10,height:25,speed:2, homing:true
+          });
+        }
+      }
+    });
+    document.addEventListener('keyup', e=>{
+      if(e.key===' '){
+        keys[' ']=false;
+        const held=Date.now()-spacePressTime;
+        if(held>=3000 && Date.now()-lastLaserTime>=20000){
+          laserActive=true; laserEndTime=Date.now()+5000; lastLaserTime=Date.now();
+          laserSound.currentTime=0; laserSound.play();
+        }
+      } else keys[e.key]=false;
+    });
+
+    // — Spawn enemies (10% blinking) —
+    function spawnEnemy(){
+      const roll=Math.random(), side=Math.floor(Math.random()*3);
+      const e = {
+        width:50,height:50,x:0,y:0,vx:0,vy:0,
+        angle:0,spinSpeed:Math.random()*0.1,fireCooldown:0,
+        type:roll<0.10?'blinking':(roll<0.525?'spinning':'firing'),
+        hp:roll<0.10?5:1
+      };
+      if(e.type==='spinning') e.oscillationAngle=Math.random()*2*Math.PI;
+      if(side===0){
+        e.x=Math.random()*(canvas.width-50); e.y=-50;
+        e.vy=(1+Math.random())*speedMultiplier;
+      } else if(side===1){
+        e.x=-50; e.y=Math.random()*canvas.height/2;
+        e.vx=(1+Math.random())*speedMultiplier;
+      } else {
+        e.x=canvas.width+50; e.y=Math.random()*canvas.height/2;
+        e.vx=-(1+Math.random())*speedMultiplier;
+      }
+      enemies.push(e);
+    }
+    setInterval(spawnEnemy,1000);
+
+    // — Game Over & ranking —
+    function handleGameOver(){
+      const survived=Math.floor((Date.now()-gameStartTime)/1000);
+      scores.push(survived);
+      localStorage.setItem('scores',JSON.stringify(scores));
+      scores.sort((a,b)=>b-a);
+      const rank=scores.indexOf(survived)+1, total=scores.length;
+      let csv='Rank,Seconds\n';
+      scores.forEach((s,i)=>csv+=`${i+1},${s}\n`);
+      const blob=new Blob([csv],{type:'text/plain'});
+      const url=URL.createObjectURL(blob);
+      const link=document.createElement('a');
+      link.href=url; link.download='rank.txt'; link.textContent='Download rank.txt';
+      document.body.appendChild(link);
+
+      ctx.fillStyle='white'; ctx.font='24px Arial'; ctx.textAlign='center';
+      ctx.fillText(`You survived ${survived} sec at level ${level}`,canvas.width/2,canvas.height/2+40);
+      ctx.fillText(`Your rank: #${rank} of ${total}`,canvas.width/2,canvas.height/2+70);
     }
 
-    function gameLoop() {
-      // Game loop logic here...
+    // — Main update & draw —
+    function update(){
+      if(paused||gameOver) return;
+
+      // background stars
+      backgroundStars.forEach(s=>{
+        s.y+=s.speed; if(s.y>canvas.height) s.y=0;
+        s.twinklePhase+=s.twinkleSpeed;
+      });
+
+      // expire timers
+      if(laserActive&&Date.now()>laserEndTime)   laserActive=false;
+      if(undeadActive&&Date.now()>undeadEndTime) undeadActive=false;
+      if(shadowBuffActive&&Date.now()>shadowBuffEnd) shadowBuffActive=false;
+
+      // ship rect
+      const shipRect = { x:spaceship.x, y:spaceship.y,
+                         width:spaceship.width, height:spaceship.height };
+
+      // move ship
+      if(keys['ArrowLeft'] && spaceship.x>0)                        spaceship.x-=spaceship.speed;
+      if(keys['ArrowRight']&& spaceship.x+50<canvas.width)          spaceship.x+=spaceship.speed;
+      if(keys['ArrowUp']   && spaceship.y>0)                        spaceship.y-=spaceship.speed;
+      if(keys['ArrowDown'] && spaceship.y+50<canvas.height)         spaceship.y+=spaceship.speed;
+
+      // *** 1) LASER kills, BULLETS, MISSILES ***
+
+      // laser kills
+      if(laserActive){
+        const lw=spaceship.width*10,
+              lx=spaceship.x+spaceship.width/2-lw/2;
+        const lr={x:lx,y:0,width:lw,height:spaceship.y};
+        for(let i=enemies.length-1;i>=0;i--){
+          if(isColliding(lr,enemies[i])){
+            explosionSound.currentTime=0; explosionSound.play();
+            if(enemies[i].type==='blinking'){
+              if(Math.random()<0.5) stars.push({x:enemies[i].x+20,y:enemies[i].y,size:20});
+              else assistShips.push({x:enemies[i].x+20,y:enemies[i].y,size:20});
+            }
+            enemies.splice(i,1);
+            killCount++; if(killCount%10===0) rocketCount++;
+          }
+        }
+      }
+
+      // bullets
+      bullets = bullets.filter(b=>{
+        b.x += b.vx||0;
+        b.y += b.vy||-b.speed;
+        return b.y>-20 && b.x>-20 && b.x<canvas.width+20;
+      });
+
+      // missiles: homing only if m.homing===true
+      missiles = missiles.filter(m => {
+        if(m.homing && enemies.length){
+          let t = enemies.reduce((a,b)=>
+            Math.hypot(a.x-m.x,a.y-m.y) < Math.hypot(b.x-m.x,b.y-m.y) ? a : b
+          );
+          const dx=t.x-m.x, dy=t.y-m.y, mag=Math.hypot(dx,dy)||1;
+          m.x += (dx/mag)*m.speed;
+          m.y += (dy/mag)*m.speed;
+        } else {
+          m.x += m.vx!==undefined ? m.vx : 0;
+          m.y += m.vy!==undefined ? m.vy : -m.speed;
+        }
+        return m.y>-m.height && m.x>-m.width && m.x<canvas.width+m.width;
+      });
+
+      // *** 2) ENEMIES & COLLISIONS ***
+
+      for(let i=enemies.length-1;i>=0;i--){
+        const e = enemies[i];
+        // chase at lvl>=5
+        if(level>=5){
+          const tx=spaceship.x+25, ty=spaceship.y+25,
+                ex=e.x+25, ey=e.y+25,
+                dx=tx-ex, dy=ty-ey, d=Math.hypot(dx,dy)||1,
+                cs=1.5*speedMultiplier;
+          e.vx = dx/d*cs;
+          e.vy = dy/d*cs;
+        }
+        // weaving
+        if(e.type==='spinning'){
+          e.oscillationAngle += 0.1;
+          const amp=2;
+          e.x += e.vx + Math.sin(e.oscillationAngle)*amp;
+          e.y += e.vy + Math.cos(e.oscillationAngle)*amp;
+        } else {
+          e.x += e.vx;
+          e.y += e.vy;
+        }
+        if(e.type==='spinning'||e.type==='blinking') e.angle += e.spinSpeed;
+
+        // firing
+        if(e.type==='firing' && --e.fireCooldown <= 0){
+          enemyBullets.push({
+            x:e.x+22.5, y:e.y+50, width:5, height:10, speed:4*speedMultiplier
+          });
+          e.fireCooldown = 100;
+        }
+
+        // collision with ship
+        if(isColliding(shipRect,e)){
+          if(undeadActive){
+            explosionSound.currentTime=0; explosionSound.play();
+            enemies.splice(i,1);
+            killCount++; if(killCount%10===0) rocketCount++;
+          } else {
+            gameOver = true;
+          }
+        }
+
+        // bullet hits
+        for(let j=bullets.length-1;j>=0;j--){
+          if(isColliding(e,bullets[j])){
+            bullets.splice(j,1); e.hp--;
+            if(e.hp<=0){
+              explosionSound.currentTime=0; explosionSound.play();
+              if(e.type==='blinking'){
+                if(Math.random()<0.5) stars.push({x:e.x+20,y:e.y,size:20});
+                else assistShips.push({x:e.x+20,y:e.y,size:20});
+              }
+              enemies.splice(i,1);
+              killCount++; if(killCount%10===0) rocketCount++;
+            }
+            break;
+          }
+        }
+        // missile hits
+        for(let j=missiles.length-1;j>=0;j--){
+          if(isColliding(e,missiles[j])){
+            missiles.splice(j,1); e.hp-=2;
+            if(e.hp<=0){
+              explosionSound.currentTime=0; explosionSound.play();
+              if(e.type==='blinking'){
+                if(Math.random()<0.5) stars.push({x:e.x+20,y:e.y,size:20});
+                else assistShips.push({x:e.x+20,y:e.y,size:20});
+              }
+              enemies.splice(i,1);
+              killCount++; if(killCount%10===0) rocketCount++;
+            }
+            break;
+          }
+        }
+      }
+
+      // enemy bullets
+      enemyBullets = enemyBullets.filter(b=>{
+        b.y += b.speed;
+        if(isColliding(shipRect,b)) gameOver = true;
+        return b.y < canvas.height;
+      });
+
+      // *** PICKUPS ***
+
+      // golden star pickups & “burst” missiles
+      for(let i=stars.length-1;i>=0;i--){
+        const s = stars[i];
+        s.y += 1;
+        if(isColliding(spaceship,
+               {x:s.x,y:s.y,width:s.size,height:s.size})){
+          pickupSound.currentTime=0; pickupSound.play();
+          goldenStars++;
+          if(goldenStars>2){
+            // fire 10 missiles in 10 directions
+            const count = 10, speed = 5;
+            for(let k=0;k<count;k++){
+              const ang = k*2*Math.PI/count;
+              missiles.push({
+                x:spaceship.x+25,
+                y:spaceship.y+25,
+                width:5, height:10,
+                vx:Math.cos(ang)*speed,
+                vy:Math.sin(ang)*speed,
+                homing:false
+              });
+            }
+          }
+          stars.splice(i,1);
+        }
+      }
+
+      // ASSIST → SHADOW pickup & buff
+      for(let i=assistShips.length-1;i>=0;i--){
+        const d=assistShips[i];
+        d.y += 1;
+        if(isColliding(spaceship,
+            {x:d.x,y:d.y,width:d.size,height:d.size})){
+          pickupSound.currentTime=0; pickupSound.play();
+          if(shadowShips.length<3){
+            spawnShadow();
+          } else {
+            shadowBuffActive=true;
+            shadowBuffStart=Date.now();
+            shadowBuffEnd=shadowBuffStart+10000;
+          }
+          assistShips.splice(i,1);
+        } else if(d.y>canvas.height){
+          assistShips.splice(i,1);
+        }
+      }
+
+      // HEX pickup → undead
+      for(let i=hexItems.length-1;i>=0;i--){
+        const d=hexItems[i];
+        d.y+=1;
+        if(isColliding(spaceship,
+            {x:d.x-10,y:d.y-10,width:d.size,height:d.size})){
+          pickupSound.currentTime=0; pickupSound.play();
+          undeadActive=true; undeadEndTime=Date.now()+5000;
+          hexItems.splice(i,1);
+        } else if(d.y>canvas.height){
+          hexItems.splice(i,1);
+        }
+      }
+
+      // *** SHADOW SHIPS DAMAGE ***
+
+      const now = Date.now();
+      if(shadowBuffActive){
+        // continuous collision while buffed
+        const rot = (now-shadowBuffStart)/1000*2*Math.PI,
+              R   = spaceship.height+20;
+        for(let i=shadowShips.length-1;i>=0;i--){
+          const s = shadowShips[i];
+          const ang = rot + i*2*Math.PI/3;
+          const sx  = spaceship.x+spaceship.width/2 + R*Math.cos(ang) - s.width/2;
+          const sy  = spaceship.y+spaceship.height/2 + R*Math.sin(ang) - s.height/2;
+          // hit enemies
+          for(let j=enemies.length-1;j>=0;j--){
+            if(isColliding({x:sx,y:sy,width:s.width,height:s.height}, enemies[j])){
+              enemies[j].hp--;
+              if(enemies[j].hp<=0){
+                explosionSound.currentTime=0; explosionSound.play();
+                enemies.splice(j,1);
+                killCount++; if(killCount%10===0) rocketCount++;
+              }
+            }
+          }
+        }
+      } else {
+        // normal shadow hits remove both
+        for(let i=shadowShips.length-1;i>=0;i--){
+          const s = shadowShips[i];
+          const sx=spaceship.x+spaceship.width/2 - s.width/2 + s.offsetX;
+          const sy=spaceship.y + s.offsetY;
+          let destroyed=false;
+          for(let j=enemies.length-1;j>=0;j--){
+            if(isColliding({x:sx,y:sy,width:s.width,height:s.height}, enemies[j])){
+              enemies[j].hp--;
+              if(enemies[j].hp<=0){
+                explosionSound.currentTime=0; explosionSound.play();
+                enemies.splice(j,1);
+                killCount++; if(killCount%10===0) rocketCount++;
+              }
+              destroyed = true;
+            }
+          }
+          if(!destroyed){
+            for(let j=enemyBullets.length-1;j>=0;j--){
+              if(isColliding({x:sx,y:sy,width:s.width,height:s.height}, enemyBullets[j])){
+                enemyBullets.splice(j,1);
+                destroyed = true;
+              }
+            }
+          }
+          if(destroyed) shadowShips.splice(i,1);
+        }
+      }
     }
 
-    function restartGame() {
-      initGame();
+    function draw(){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+
+      // starfield
+      backgroundStars.forEach(s=>{
+        const alpha=0.5+0.5*Math.sin(s.twinklePhase),
+              r=s.baseR*(0.75+0.25*Math.sin(s.twinklePhase));
+        ctx.fillStyle=`rgba(255,255,255,${alpha})`;
+        ctx.beginPath(); ctx.arc(s.x,s.y,r,0,Math.PI*2); ctx.fill();
+      });
+
+      // charging indicator
+      if(keys[' '] && !laserActive
+         && Date.now()-spacePressTime>=3000
+         && Date.now()-lastLaserTime>=20000){
+        ctx.beginPath();
+        ctx.arc(spaceship.x+25, spaceship.y+65, 25, 0, Math.PI*2);
+        ctx.fillStyle='rgba(0,255,255,0.5)'; ctx.fill();
+      }
+
+      // laser beam
+      if(laserActive){
+        const lw=spaceship.width*10,
+              lx=spaceship.x+spaceship.width/2-lw/2;
+        ctx.fillStyle='cyan'; ctx.fillRect(lx,0,lw,spaceship.y);
+      }
+
+      // pick ship image
+      let img = imgNormal;
+      if(keys['ArrowLeft']  && !keys['ArrowRight']) img = imgLeft;
+      else if(keys['ArrowRight'] && !keys['ArrowLeft']) img = imgRight;
+
+      // draw ship
+      const now = Date.now();
+      if(undeadActive) ctx.globalAlpha=(Math.floor(now/100)%2)?0.5:1;
+      ctx.drawImage(img, spaceship.x, spaceship.y, spaceship.width, spaceship.height);
+      ctx.globalAlpha=1;
+
+      // draw shadow ships
+      if(shadowBuffActive){
+        const rot=(now-shadowBuffStart)/1000*2*Math.PI,
+              R  = spaceship.height+20;
+        shadowShips.forEach((s,i)=>{
+          const ang=rot + i*2*Math.PI/3;
+          const sx=spaceship.x+spaceship.width/2 + R*Math.cos(ang) - s.width/2;
+          const sy=spaceship.y+spaceship.height/2 + R*Math.sin(ang) - s.height/2;
+          ctx.drawImage(imgShadow, sx, sy, s.width, s.height);
+        });
+      } else {
+        shadowShips.forEach(s=>{
+          const sx=spaceship.x+spaceship.width/2 - s.width/2 + s.offsetX;
+          const sy=spaceship.y + s.offsetY;
+          ctx.drawImage(imgShadow, sx, sy, s.width, s.height);
+        });
+      }
+
+      // bullets & missiles
+      ctx.fillStyle='yellow';
+      bullets.forEach(b=>ctx.fillRect(b.x,b.y,b.width,b.height));
+      ctx.fillStyle='orange';
+      missiles.forEach(m=>ctx.fillRect(m.x,m.y,m.width,m.height));
+
+      // enemies
+      enemies.forEach(e=>{
+        ctx.save();
+        ctx.translate(e.x+25,e.y+25);
+        if(e.type==='spinning'||e.type==='blinking') ctx.rotate(e.angle);
+        ctx.fillStyle=e.type==='blinking'
+          ?(Math.floor(now/100)%2===0?'white':'gold')
+          :(e.type==='spinning'?'red':'purple');
+        ctx.beginPath(); ctx.arc(0,-7.5,20,Math.PI,0); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(0,2.5,25,15,0,0,Math.PI*2); ctx.fill();
+        ctx.restore();
+      });
+
+      // enemy bullets
+      ctx.fillStyle='white';
+      enemyBullets.forEach(b=>ctx.fillRect(b.x,b.y,b.width,b.height));
+
+      // stars & assists
+      stars.forEach(s=>{
+        ctx.fillStyle='gold';
+        ctx.beginPath(); ctx.arc(s.x+s.size/2,s.y+s.size/2,s.size/2,0,Math.PI*2); ctx.fill();
+      });
+      ctx.fillStyle='green';
+      assistShips.forEach(d=>{
+        ctx.beginPath();
+        ctx.moveTo(d.x+d.size/2,d.y);
+        ctx.lineTo(d.x,     d.y+d.size);
+        ctx.lineTo(d.x+d.size,d.y+d.size);
+        ctx.closePath(); ctx.fill();
+      });
+
+      // HUD
+      ctx.fillStyle='white';
+      ctx.fillText(`Missiles: ${rocketCount}`,10,20);
+      ctx.fillText(`Stars:    ${goldenStars}`,10,40);
+      ctx.fillText(`Level:    ${level}`,   10,60);
+
+      if(paused){
+        ctx.fillText('PAUSED (Enter to resume)',canvas.width/2-80,60);
+      }
+      if(gameOver){
+        ctx.font='48px Arial'; ctx.textAlign='center';
+        ctx.fillText('Game Over',canvas.width/2,canvas.height/2);
+      }
     }
 
-    function quitGame() {
-      menu.style.display = 'none';
-      ctx.fillStyle = 'black';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    function gameLoop(){
+      if(!gameOver){
+        update(); draw(); requestAnimationFrame(gameLoop);
+      } else {
+        draw();
+        if(!gameOverHandled){ handleGameOver(); gameOverHandled=true; }
+      }
     }
+    gameLoop();
   </script>
 </body>
 </html>
-
