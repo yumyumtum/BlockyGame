@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dodge Game Evolved</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #111;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background: #222;
+      border: 2px solid #fff;
+    }
+
+    #menu {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      background-color: rgba(0, 0, 0, 0.8);
+      padding: 40px;
+      border: 2px solid white;
+      text-align: center;
+      display: none;
+    }
+
+    #menu h1 {
+      margin-bottom: 20px;
+    }
+
+    .menu-button {
+      display: block;
+      width: 200px;
+      margin: 10px auto;
+      padding: 10px;
+      font-size: 18px;
+      background: #333;
+      color: white;
+      border: 2px solid white;
+      cursor: pointer;
+    }
+
+    .menu-button:hover {
+      background: #555;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="400" height="600"></canvas>
+  <div id="menu">
+    <h1>Game Over</h1>
+    <p id="finalScore"></p>
+    <button class="menu-button" onclick="restartGame()">Restart</button>
+    <button class="menu-button" onclick="quitGame()">Quit</button>
+  </div>
+
+  <!-- Bandit and Tore Up songs -->
+  <audio id="banditSong" src="URL_TO_BANDIT_SONG.mp3" preload="auto"></audio>
+  <audio id="toreUpSong" src="URL_TO_TORE_UP_SONG.mp3" preload="auto"></audio>
+
+  <div id="startButtonDiv" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+    <button class="menu-button" onclick="startGame()">Start Game</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const menu = document.getElementById('menu');
+    const finalScore = document.getElementById('finalScore');
+    const banditSong = document.getElementById('banditSong');
+    const toreUpSong = document.getElementById('toreUpSong');
+    const startButtonDiv = document.getElementById('startButtonDiv');
+
+    let player, blocks, score, keys, highScore = 0;
+    let arrows = [], missiles = [], explosions = [];
+    let gameRunning = true;
+    let spawnInterval;
+    let warningTimer = 0;
+    let startTime;
+
+    // Start the game and play Bandit and then Tore Up
+    function startGame() {
+      startButtonDiv.style.display = 'none';  // Hide the Start Game button
+
+      // Start Bandit song
+      banditSong.play().then(() => {
+        banditSong.onended = () => {
+          // Once Bandit ends, start Tore Up
+          toreUpSong.play().then(() => {
+            // Once Tore Up finishes, start the game
+            initGame();
+          }).catch(e => console.log("Error playing Tore Up song:", e));
+        };
+      }).catch(e => console.log("Error playing Bandit song:", e));
+    }
+
+    function initGame() {
+      player = { x: 180, y: 550, width: 40, height: 40, speed: 5, health: 2, level: 0 };
+      blocks = [];
+      arrows = [];
+      missiles = [];
+      explosions = [];
+      score = 0;
+      keys = {};
+      warningTimer = 0;
+      gameRunning = true;
+      menu.style.display = 'none';
+      startTime = Date.now();
+      clearInterval(spawnInterval);
+      spawnInterval = setInterval(spawnBlock, 800);
+      gameLoop();
+    }
+
+    function spawnBlock() {
+      // Block spawning logic here...
+    }
+
+    function gameLoop() {
+      // Game loop logic here...
+    }
+
+    function restartGame() {
+      initGame();
+    }
+
+    function quitGame() {
+      menu.style.display = 'none';
+      ctx.fillStyle = 'black';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+  </script>
+</body>
+</html>
+
