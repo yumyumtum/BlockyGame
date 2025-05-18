@@ -6,9 +6,64 @@
   <style>
     body { margin: 0; overflow: hidden; background: black; }
     canvas { display: block; }
+
+    /* ─── Menu Overlay Styles ─── */
+    #menuOverlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      z-index: 10;
+    }
+    #menuOverlay img {
+      width: 256px; height: auto;
+      margin-bottom: 20px;
+    }
+    #menuOverlay h1 {
+      font-size: 72px;
+      margin: 10px 0;
+      color: #ff4081;
+      text-shadow: 2px 2px 6px #000;
+    }
+    #menuOverlay p {
+      font-size: 20px;
+      margin: 4px 0;
+      text-align: center;
+    }
+    #menuOverlay .credits {
+      margin-top: 30px;
+      font-size: 16px;
+      color: #ccc;
+      line-height: 1.4;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
+  <!-- ─── Start-Menu Overlay ─── -->
+  <div id="menuOverlay">
+    <img src="logo.png" alt="SpaceShip Logo">
+    <!--
+    <h1>SpaceShip</h1>
+    <p>Use WASD or ↑↓←→ to move</p>
+    <p>SPACE = shoot, hold for laser</p>
+    <p>Press ‘2’ or Right-click for rockets</p>
+    <p>Left-click to shoot</p>
+    <p>ENTER or click to START</p>
+    <div class="credits">
+      CyclopsGamers Studio<br>
+      Chief Developer: famouswest@hotmail.com<br>
+      Co-Developers: skyburgers@outlook.com, justahypixelfan@gmail.com
+    </div> 
+    -->
+  </div>
+
+  <!-- Game Canvas -->
   <canvas id="gameCanvas"></canvas>
 
   <!-- Sound assets -->
@@ -33,7 +88,22 @@
     window.addEventListener('click',  playNextBGM, { once:true });
     window.addEventListener('keydown', playNextBGM, { once:true });
 
-    // — Level scaling every 1m (×1.2), reset at lvl 5 —
+    // ─── Menu Logic ───
+    let menuActive = true;
+    const menuOverlay = document.getElementById('menuOverlay');
+    function startGame() {
+      if (!menuActive) return;
+      menuActive = false;
+      menuOverlay.style.display = 'none';
+      playNextBGM();
+      gameStartTime = Date.now();
+    }
+    menuOverlay.addEventListener('click', startGame);
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter') startGame();
+    });
+
+    // — Level scaling every 1m (×1.2), reset at lvl 5 —
     let speedMultiplier = 1, level = 1;
     setInterval(() => {
       const prev = speedMultiplier;
@@ -112,55 +182,104 @@
       shadowShips.push({ offsetX:ox, offsetY:oy, width:w, height:h });
     }
 
-    // — Input handling —
-    document.addEventListener('keydown', e=>{
-      if(e.key==='Enter'){ paused=!paused; return; }
-      if(paused||gameOver) return;
-      if(e.key===' '){
-        if(e.repeat) return;
-        spacePressTime=Date.now(); keys[' ']=true;
-        if(Date.now()-lastShotTime>=500){
-          lastShotTime=Date.now();
-          shootSound.currentTime=0; shootSound.play();
-          bullets.push({ x:spaceship.x+25-2.5, y:spaceship.y, width:5, height:10, speed:7 });
-          if(goldenStars>=1){
-            bullets.push({x:spaceship.x+10,y:spaceship.y,width:5,height:10,vx:-1,vy:-7});
-            bullets.push({x:spaceship.x+40-5,y:spaceship.y,width:5,height:10,vx: 1,vy:-7});
-          }
-          if(goldenStars>=2){
-            bullets.push({x:spaceship.x+5, y:spaceship.y,width:5,height:10,vx:-2,vy:-7});
-            bullets.push({x:spaceship.x+45-5,y:spaceship.y,width:5,height:10,vx: 2,vy:-7});
-          }
-          shadowShips.forEach(s=>{
-            bullets.push({
-              x:spaceship.x+25-2.5+s.offsetX,
-              y:spaceship.y+s.offsetY,
-              width:5,height:10,speed:7
-            });
-          });
-        }
-      } else keys[e.key]=true;
+    // — Input handling (keyboard + WASD + mouse) —
+    const shoot = () => {
+      if (Date.now() - lastShotTime < 500) return;
+      lastShotTime = Date.now();
+      shootSound.currentTime = 0; shootSound.play();
+      bullets.push({ x: spaceship.x + 25 - 2.5, y: spaceship.y, width: 5, height: 10, speed: 7 });
+      if (goldenStars >= 1) {
+        bullets.push({ x: spaceship.x + 10, y: spaceship.y, width: 5, height: 10, vx: -1, vy: -7 });
+        bullets.push({ x: spaceship.x + 40 - 5, y: spaceship.y, width: 5, height: 10, vx:  1, vy: -7 });
+      }
+      if (goldenStars >= 2) {
+        bullets.push({ x: spaceship.x +  5, y: spaceship.y, width: 5, height: 10, vx: -2, vy: -7 });
+        bullets.push({ x: spaceship.x + 45 - 5, y: spaceship.y, width: 5, height: 10, vx:  2, vy: -7 });
+      }
+      shadowShips.forEach(s => {
+        bullets.push({
+          x: spaceship.x + 25 - 2.5 + s.offsetX,
+          y: spaceship.y + s.offsetY,
+          width: 5, height: 10, speed: 7
+        });
+      });
+    };
 
-      if(e.key==='2'&&rocketCount>0){
-        rocketCount--; missileSound.currentTime=0; missileSound.play();
-        for(let i=-1;i<=1;i++){
-          missiles.push({
-            x:spaceship.x+25-5+i*5,
-            y:spaceship.y+50,
-            width:10,height:25,speed:2, homing:true
-          });
-        }
+    const fireMissile = () => {
+      if (rocketCount <= 0) return;
+      rocketCount--;
+      missileSound.currentTime = 0; missileSound.play();
+      for (let i = -1; i <= 1; i++) {
+        missiles.push({
+          x: spaceship.x + 25 - 5 + i * 5,
+          y: spaceship.y + 50,
+          width: 10, height: 25, speed: 2, homing: true
+        });
+      }
+    };
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { paused = !paused; return; }
+      if (menuActive || paused || gameOver) return;
+
+      const k = e.key.toLowerCase();
+      if (k === ' ') {
+        spacePressTime = Date.now();
+        keys[' '] = true;
+        shoot();
+      } else if (k === '2') {
+        fireMissile();
+      } else if ('wasd'.includes(k)) {
+        keys[k] = true;
+      } else {
+        keys[e.key] = true;
       }
     });
-    document.addEventListener('keyup', e=>{
-      if(e.key===' '){
-        keys[' ']=false;
-        const held=Date.now()-spacePressTime;
-        if(held>=3000 && Date.now()-lastLaserTime>=20000){
-          laserActive=true; laserEndTime=Date.now()+5000; lastLaserTime=Date.now();
-          laserSound.currentTime=0; laserSound.play();
+
+    document.addEventListener('keyup', e => {
+      if (menuActive || paused || gameOver) return;
+
+      const k = e.key.toLowerCase();
+      if (k === ' ') {
+        keys[' '] = false;
+        const held = Date.now() - spacePressTime;
+        if (held >= 3000 && Date.now() - lastLaserTime >= 20000) {
+          laserActive = true;
+          laserEndTime = Date.now() + 5000;
+          lastLaserTime = Date.now();
+          laserSound.currentTime = 0; laserSound.play();
         }
-      } else keys[e.key]=false;
+      } else if ('wasd'.includes(k)) {
+        keys[k] = false;
+      } else {
+        keys[e.key] = false;
+      }
+    });
+
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+    canvas.addEventListener('mousedown', e => {
+      if (menuActive || paused || gameOver) return;
+      if (e.button === 0) {
+        spacePressTime = Date.now();
+        keys[' '] = true;
+        shoot();
+      }
+      if (e.button === 2) {
+        fireMissile();
+      }
+    });
+    canvas.addEventListener('mouseup', e => {
+      if (menuActive || paused || gameOver) return;
+      if (e.button === 0) {
+        keys[' '] = false;
+        const held = Date.now() - spacePressTime;
+        if (held >= 3000 && Date.now() - lastLaserTime >= 20000) {
+          laserActive = true;
+          laserEndTime = Date.now() + 5000;
+          lastLaserTime = Date.now();
+          laserSound.currentTime = 0; laserSound.play();
+        }
+      }
     });
 
     // — Spawn enemies (10% blinking) —
@@ -207,7 +326,7 @@
       ctx.fillText(`Your rank: #${rank} of ${total}`,canvas.width/2,canvas.height/2+70);
     }
 
-    // — Main update & draw —
+ // — Main update & draw —
     function update(){
       if(paused||gameOver) return;
 
@@ -231,6 +350,14 @@
       if(keys['ArrowRight']&& spaceship.x+50<canvas.width)          spaceship.x+=spaceship.speed;
       if(keys['ArrowUp']   && spaceship.y>0)                        spaceship.y-=spaceship.speed;
       if(keys['ArrowDown'] && spaceship.y+50<canvas.height)         spaceship.y+=spaceship.speed;
+	  
+	      // ship movement: WASD
+		// ship movement: WASD
+		if (keys['a'] && spaceship.x > 0)                                  spaceship.x -= spaceship.speed;
+		if (keys['d'] && spaceship.x + spaceship.width < canvas.width)    spaceship.x += spaceship.speed;
+		if (keys['w'] && spaceship.y > 0)                                  spaceship.y -= spaceship.speed;
+		if (keys['s'] && spaceship.y + spaceship.height < canvas.height)  spaceship.y += spaceship.speed;
+
 
       // *** 1) LASER kills, BULLETS, MISSILES ***
 
@@ -478,6 +605,8 @@
       }
     }
 
+
+
     function draw(){
       ctx.clearRect(0,0,canvas.width,canvas.height);
 
@@ -586,12 +715,23 @@
       }
     }
 
+
+    // — Game Loop —
     function gameLoop(){
+      if (menuActive) {
+        requestAnimationFrame(gameLoop);
+        return;
+      }
       if(!gameOver){
-        update(); draw(); requestAnimationFrame(gameLoop);
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
       } else {
         draw();
-        if(!gameOverHandled){ handleGameOver(); gameOverHandled=true; }
+        if(!gameOverHandled){
+          handleGameOver();
+          gameOverHandled=true;
+        }
       }
     }
     gameLoop();
