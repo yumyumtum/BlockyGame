@@ -12,31 +12,25 @@
       color: white;
       font-family: Arial, sans-serif;
     }
-
     canvas {
       display: block;
       margin: 0 auto;
       background: #222;
       border: 2px solid #fff;
     }
-
-    #menu {
+    #menu, #helpOverlay {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
       color: white;
-      background-color: rgba(0, 0, 0, 0.8);
+      background-color: rgba(0, 0, 0, 0.9);
       padding: 40px;
       border: 2px solid white;
       text-align: center;
       display: none;
+      z-index: 10;
     }
-
-    #menu h1 {
-      margin-bottom: 20px;
-    }
-
     .menu-button {
       display: block;
       width: 200px;
@@ -48,14 +42,19 @@
       border: 2px solid white;
       cursor: pointer;
     }
-
     .menu-button:hover {
       background: #555;
+    }
+    #helpOverlay p {
+      margin: 10px 0;
+      font-size: 16px;
     }
   </style>
 </head>
 <body>
   <canvas id="gameCanvas" width="400" height="600"></canvas>
+
+  <!-- Game Over Menu -->
   <div id="menu">
     <h1>Game Over</h1>
     <p id="finalScore"></p>
@@ -63,208 +62,293 @@
     <button class="menu-button" onclick="quitGame()">Quit</button>
   </div>
 
-  <!-- Zelda theme audio -->
-  <audio id="zeldaTheme" src="https://vgmsite.com/soundtracks/legend-of-zelda-ocarina-of-time/swjwnvym/101%20-%20Title%20Theme.mp3" preload="auto"></audio>
+  <!-- Help Overlay -->
+  <div id="helpOverlay">
+    <h1>How to Play</h1>
+    <p><strong>Move:</strong> Arrow Keys or WASD</p>
+    <p><strong>Shoot Arrow:</strong> Press <code>5</code> (if Level ≥ 5)</p>
+    <p><strong>Fire Missile:</strong> Press <code>1</code> (if Level ≥ 10)</p>
+    <p><strong>Laser:</strong> Hold <code>L</code> or Middle Mouse</p>
+    <p>Collect <span style="color:blue">Blue</span> blocks for health & level up</p>
+    <p>Avoid <span style="color:green">Green</span> blocks!</p>
+    <p>Press <strong>H</strong> again to close this help.</p>
+  </div>
+
+  <audio id="bgMusic" preload="auto"></audio>
 
   <script>
     const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    const menu = document.getElementById('menu');
+    const ctx    = canvas.getContext('2d');
+    const menu   = document.getElementById('menu');
+    const help   = document.getElementById('helpOverlay');
     const finalScore = document.getElementById('finalScore');
-    const music = document.getElementById('zeldaTheme');
+    const music = document.getElementById('bgMusic');
 
+    // Game state
     let player, blocks, score, keys, highScore = 0;
     let arrows = [], missiles = [], explosions = [];
-    let gameRunning = true;
-    let spawnInterval;
-    let warningTimer = 0;
-    let startTime;
+    let gameRunning = false, spawnInterval, warningTimer = 0, startTime, musicStarted = false;
+    let showHelp = false;
+
+    // Buff timers
+    let regenEnd=0, healTick=0;
+    let speedEnd=0, baseSpeed=5;
+    let invEnd=0;
+    let shieldEnd=0, shieldActive=false;
+
+    const musicFiles = [
+      'musical_song_thingies/BANDIT.mp3',
+      'musical_song_thingies/ICE_AGE.mp3',
+      'musical_song_thingies/TORE_UP.mp3',
+      'musical_song_thingies/Toxic.mp3',
+      'musical_song_thingies/Understand.mp3'
+    ];
+
+    function playRandomMusic() {
+      const song = musicFiles[Math.floor(Math.random()*musicFiles.length)];
+      music.src = encodeURI(song);
+      music.volume = 0.5; music.loop = true;
+      music.play().catch(()=>{
+        const resume = ()=>{ music.play().catch(()=>{}); canvas.removeEventListener('click',resume); };
+        canvas.addEventListener('click',resume);
+      });
+    }
 
     function initGame() {
-      music.currentTime = 0;
-      music.play().catch(e => console.log("Autoplay blocked:", e));
-
-      player = { x: 180, y: 550, width: 40, height: 40, speed: 5, health: 2, level: 0 };
-      blocks = [];
-      arrows = [];
-      missiles = [];
-      explosions = [];
-      score = 0;
-      keys = {};
-      warningTimer = 0;
-      gameRunning = true;
-      menu.style.display = 'none';
-      startTime = Date.now();
+      if (!musicStarted) { musicStarted = true; playRandomMusic(); }
+      player = { x:180, y:550, width:40, height:40, speed:baseSpeed, health:2, level:0 };
+      blocks = []; arrows=[]; missiles=[]; explosions=[];
+      score=0; keys={}; warningTimer=0; showHelp=false;
+      regenEnd=healTick=0; speedEnd=0; player.speed=baseSpeed;
+      invEnd=0; shieldEnd=0; shieldActive=false;
+      gameRunning=true; menu.style.display='none'; help.style.display='none';
+      startTime=Date.now();
       clearInterval(spawnInterval);
-      spawnInterval = setInterval(spawnBlock, 800);
+      spawnInterval = setInterval(spawnBlock,800);
       gameLoop();
     }
 
-    document.addEventListener('keydown', (e) => {
+    canvas.addEventListener('click',()=>{ if (!gameRunning) initGame(); });
+    document.addEventListener('keydown', e => {
       keys[e.key] = true;
-      if (e.key === '5' && player.level >= 5) arrows.push({ x: player.x + player.width/2 -2, y: player.y, width: 4, height:10, speed:7, color:'yellow' });
-      if (e.key === '1' && player.level >= 10) missiles.push({ x: player.x + player.width/2 -5, y: player.y, width:10, height:20, speed:5, color:'orange' });
+      // Toggle help overlay
+      if (e.key.toLowerCase() === 'h' && gameRunning) {
+        showHelp = !showHelp;
+        help.style.display = showHelp ? 'block' : 'none';
+      }
+      // Fire arrows or missiles
+      if (e.key==='5' && player.level>=5) 
+        arrows.push({ x:player.x+18, y:player.y, width:4, height:10, speed:7, color:'yellow' });
+      if (e.key==='1' && player.level>=10)
+        missiles.push({ x:player.x+15, y:player.y, width:10, height:20, speed:5, color:'orange' });
     });
-    document.addEventListener('keyup', (e) => keys[e.key] = false);
+    document.addEventListener('keyup', e => keys[e.key] = false);
 
-    function drawPlayer() {
-      const cx = player.x + player.width / 2;
-      const cy = player.y + player.height / 2;
-      const radius = player.width / 2;
-      ctx.fillStyle = 'yellow';
+    function drawPlayer(){
+      const cx=player.x+20, cy=player.y+20, r=20;
+      ctx.fillStyle='yellow';
+      ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='black';
       ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.arc(cx-r/3,cy-r/5,r/8,0,Math.PI*2);
+      ctx.arc(cx+r/3,cy-r/5,r/8,0,Math.PI*2);
       ctx.fill();
-      ctx.fillStyle = 'black';
-      ctx.beginPath();
-      ctx.arc(cx - radius / 3, cy - radius / 5, radius / 8, 0, Math.PI * 2);
-      ctx.arc(cx + radius / 3, cy - radius / 5, radius / 8, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(cx, cy + radius / 8, radius / 3, 0, Math.PI);
-      ctx.strokeStyle = 'black';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx,cy+r/8,r/3,0,Math.PI);
+      ctx.strokeStyle='black'; ctx.lineWidth=2; ctx.stroke();
     }
 
-    function spawnBlock() {
-      const now = Date.now();
-      const elapsed = now - startTime;
-      const typeRand = Math.random();
-      let block = { x: Math.random() * (canvas.width - 30), y: -30, width:30, height:30, speed:2 + Math.random()*2 };
-      if (typeRand < 0.6) {
-        block.type = 'red'; block.color = 'red';
-      } else if (typeRand < 0.85) {
-        block.type = 'blue'; block.color = 'blue';
-      } else {
-        block.type = 'green';
-        block.color = elapsed < 60000 ? 'green' : 'orange';
+    function spawnBlock(){
+      const now=Date.now(), elapsed=now-startTime, r=Math.random();
+      let b={ x:Math.random()*(canvas.width-30), y:-30, width:30, height:30, speed:2+Math.random()*2 };
+      if      (r<0.6)  { b.type='red';    b.color='red';    }
+      else if (r<0.8)  { b.type='blue';   b.color='blue';   }
+      else if (r<0.9)  { b.type='green';  b.color=elapsed<60000?'green':'orange'; }
+      else if (r<0.94) { b.type='yellow'; b.color='yellow'; } // regen
+      else if (r<0.97) { b.type='purple'; b.color='purple'; } // speed
+      else if (r<0.99) { b.type='white';  b.color='white';  } // invincible
+      else             { b.type='pink';   b.color='pink';   } // shield
+      blocks.push(b);
+    }
+
+    function checkCollision(a,b){
+      return a.x<b.x+b.width && a.x+a.width>b.x &&
+             a.y<b.y+b.height && a.y+a.height>b.y;
+    }
+
+    function updateBlocks(){
+      const now=Date.now(), elapsed=now-startTime;
+      for(let i=0;i<blocks.length;i++){
+        const b=blocks[i];
+        b.y+=b.speed;
+        if(checkCollision(player,b)){
+          if(now<invEnd){}
+          else if(shieldActive && now<shieldEnd){ shieldActive=false; }
+          else if(b.type==='red'){
+            const dmg=elapsed>=30000?1.5:1;
+            player.health-=dmg; warningTimer=60;
+            if(player.health<=0) return endGame('You died!');
+          } else if(b.type==='blue'){
+            player.level++;
+            player.health=Math.min(player.health+1,2);
+          } else if(b.type==='green'){
+            return endGame('Hit by forbidden block!');
+          }
+          blocks.splice(i--,1);
+          continue;
+        }
+        if(b.y>canvas.height){ blocks.splice(i--,1); score++; }
       }
-      blocks.push(block);
     }
 
-    function checkCollision(a, b) {
-      return a.x < b.x + b.width && a.x + a.width > b.x &&
-             a.y < b.y + b.height && a.y + a.height > b.y;
-    }
-
-    function updateBlocks() {
-      const now = Date.now();
-      const elapsed = now - startTime;
-      for (let i = 0; i < blocks.length; i++) {
-        const block = blocks[i]; block.y += block.speed;
-        if (checkCollision(player, block)) {
-          if (block.type === 'red') {
-            const damage = elapsed >= 30000 ? 1.5 : 1;
-            player.health -= damage;
-            warningTimer = 60;
-            blocks.splice(i, 1); i--;
-            if (player.health <= 0) { endGame('You died!'); return; }
-          } else if (block.type === 'blue') {
-            player.level++; player.health = Math.min(player.health + 1, 2);
-            blocks.splice(i, 1); i--;
-          } else if (block.type === 'green') {
-            endGame('Hit by forbidden block!'); return;
+    function updateProjectiles(){
+      // arrows
+      for(let i=0;i<arrows.length;i++){
+        arrows[i].y-=arrows[i].speed;
+        for(let j=0;j<blocks.length;j++){
+          if(checkCollision(arrows[i],blocks[j])){
+            blocks.splice(j,1);
+            arrows.splice(i--,1);
+            break;
           }
         }
-        if (block.y > canvas.height) { blocks.splice(i, 1); i--; score++; }
+        if(arrows[i] && arrows[i].y<0) arrows.splice(i--,1);
       }
-    }
-
-    function movePlayer() {
-      if (keys['ArrowLeft'] && player.x > 0) player.x -= player.speed;
-      if (keys['ArrowRight'] && player.x + player.width < canvas.width) player.x += player.speed;
-      if (keys['ArrowUp'] && player.y > 0) player.y -= player.speed;
-      if (keys['ArrowDown'] && player.y + player.height < canvas.height) player.y += player.speed;
-    }
-
-    function updateProjectiles() {
-      for (let i = 0; i < arrows.length; i++) {
-        arrows[i].y -= arrows[i].speed;
-        for (let j = 0; j < blocks.length; j++) {
-          if (checkCollision(arrows[i], blocks[j])) { blocks.splice(j,1); arrows.splice(i,1); i--; break; }
-        }
-        if (arrows[i] && arrows[i].y < 0) { arrows.splice(i,1); i--; }
-      }
-      for (let i = 0; i < missiles.length; i++) {
-        missiles[i].y -= missiles[i].speed;
-        for (let j = 0; j < blocks.length; j++) {
-          if (checkCollision(missiles[i], blocks[j])) {
-            explosions.push({ x: blocks[j].x + blocks[j].width/2, y: blocks[j].y + blocks[j].height/2, radius:10, alpha:1 });
-            blocks.splice(j,1); missiles.splice(i,1); i--; break;
+      // missiles & buffs
+      for(let i=0;i<missiles.length;i++){
+        missiles[i].y-=missiles[i].speed;
+        for(let j=0;j<blocks.length;j++){
+          const b=blocks[j];
+          if(checkCollision(missiles[i],b)){
+            const now=Date.now();
+            if(b.type==='yellow'){ regenEnd=now+15000; healTick=now; }
+            else if(b.type==='purple'){ speedEnd=now+10000; player.speed=baseSpeed*2; }
+            else if(b.type==='white'){ invEnd=now+8000; }
+            else if(b.type==='pink'){ shieldEnd=now+12000; shieldActive=true; }
+            if(b.type==='green'){
+              explosions.push({ x:b.x+15, y:b.y+15, radius:10, alpha:1 });
+            }
+            blocks.splice(j,1);
+            missiles.splice(i--,1);
+            break;
           }
         }
-        if (missiles[i] && missiles[i].y < 0) { missiles.splice(i,1); i--; }
+        if(missiles[i] && missiles[i].y<0) missiles.splice(i--,1);
       }
     }
 
-    function updateExplosions() {
-      for (let i = 0; i < explosions.length; i++) {
-        const ex = explosions[i]; ex.radius += 2; ex.alpha -= 0.05;
-        if (ex.alpha <= 0) { explosions.splice(i,1); i--; }
+    function updateExplosions(){
+      for(let i=0;i<explosions.length;i++){
+        const ex=explosions[i];
+        ex.radius+=2; ex.alpha-=0.05;
+        if(ex.alpha<=0) explosions.splice(i--,1);
       }
     }
 
-    function drawProjectiles() {
-      arrows.forEach(a => { ctx.fillStyle = a.color; ctx.fillRect(a.x, a.y, a.width, a.height); });
-      missiles.forEach(m => { ctx.fillStyle = m.color; ctx.fillRect(m.x, m.y, m.width, m.height); });
+    function updateBuffs(){
+      const now=Date.now();
+      if(now<regenEnd && now-healTick>=1000){
+        player.health=Math.min(player.health+0.5,2);
+        healTick=now;
+      }
+      if(now>=speedEnd) player.speed=baseSpeed;
     }
 
-    function drawExplosions() {
-      explosions.forEach(ex => {
+    function movePlayer(){
+      if(keys['ArrowLeft'] && player.x>0) player.x-=player.speed;
+      if(keys['ArrowRight'] && player.x+player.width<canvas.width) player.x+=player.speed;
+      if(keys['ArrowUp'] && player.y>0) player.y-=player.speed;
+      if(keys['ArrowDown'] && player.y+player.height<canvas.height) player.y+=player.speed;
+    }
+
+    function drawProjectiles(){
+      arrows.forEach(a=>{ ctx.fillStyle=a.color; ctx.fillRect(a.x,a.y,a.width,a.height); });
+      missiles.forEach(m=>{ ctx.fillStyle=m.color; ctx.fillRect(m.x,m.y,m.width,m.height); });
+    }
+
+    function drawExplosions(){
+      explosions.forEach(ex=>{
         ctx.beginPath();
-        ctx.arc(ex.x, ex.y, ex.radius, 0, Math.PI*2);
-        ctx.fillStyle = `rgba(255,165,0,${ex.alpha})`;
+        ctx.arc(ex.x,ex.y,ex.radius,0,Math.PI*2);
+        ctx.fillStyle=`rgba(255,165,0,${ex.alpha})`;
         ctx.fill();
       });
     }
 
-    function drawHUD() {
-      ctx.fillStyle = 'white'; ctx.font = '16px Arial';
-      ctx.fillText('Score: ' + score, 10, 20);
-      ctx.fillText('Health: ' + Math.max(player.health, 0).toFixed(1), 10, 40);
-      ctx.fillText('Level: ' + player.level, 10, 60);
+    function drawHUD(){
+      ctx.fillStyle='white'; ctx.font='16px Arial'; ctx.textAlign='left';
+      ctx.fillText('Score: '+score,10,20);
+      ctx.fillText('Health: '+Math.max(player.health,0).toFixed(1),10,40);
+      ctx.fillText('Level: '+player.level,10,60);
+
+      // Buff timers
+      const now=Date.now();
+      if(now<regenEnd)  ctx.fillText('Regen: '+Math.ceil((regenEnd-now)/1000)+'s',10,80);
+      if(now<speedEnd){ ctx.fillStyle='purple'; ctx.fillText('Speed: '+Math.ceil((speedEnd-now)/1000)+'s',10,100); }
+      if(now<invEnd)  { ctx.fillStyle='white'; ctx.fillText('Invincible: '+Math.ceil((invEnd-now)/1000)+'s',10,120); }
+      if(shieldActive && now<shieldEnd){ ctx.fillStyle='pink'; ctx.fillText('Shield',10,140); }
+
+      // Press H for help
+      ctx.fillStyle='white'; ctx.fillText('Press H for help', canvas.width-160, 20);
     }
 
-    function drawWarning() {
-      if (warningTimer > 0) {
-        ctx.fillStyle = 'red'; ctx.font = 'bold 24px Arial';
-        ctx.fillText('WARNING', 10, 90);
+    function drawWarning(){
+      if(warningTimer>0){
+        ctx.fillStyle='red'; ctx.font='bold 24px Arial';
+        ctx.fillText('WARNING',10,90);
         warningTimer--;
       }
     }
 
-    function endGame(message) {
-      gameRunning = false; clearInterval(spawnInterval); highScore = Math.max(highScore, score);
-      finalScore.innerHTML = `${message}<br>Score: ${score}<br>High Score: ${highScore}`;
-      menu.style.display = 'block';
+    function endGame(msg){
+      gameRunning=false;
+      clearInterval(spawnInterval);
+      highScore = Math.max(highScore, score);
+      finalScore.innerHTML=`${msg}<br>Score: ${score}<br>High Score: ${highScore}`;
+      menu.style.display='block';
     }
 
-    function restartGame() { initGame(); }
-    function quitGame() {
+    function restartGame(){ initGame(); }
+    function quitGame(){
       menu.style.display='none';
-      ctx.fillStyle='black';
-      ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle='black'; ctx.fillRect(0,0,canvas.width,canvas.height);
     }
 
-    function gameLoop() {
-      const now = Date.now(); const elapsed = now - startTime;
-      if (elapsed >= 600000) {
-        clearInterval(spawnInterval); gameRunning = false;
-        ctx.fillStyle = 'black'; ctx.fillRect(0,0,canvas.width,canvas.height);
-        ctx.fillStyle = 'white'; ctx.font = 'bold 20px Arial'; ctx.textAlign = 'center';
-        ctx.fillText('THANKS TO SKYE YAN FOR MAKING THIS GAME', canvas.width/2, canvas.height/2);
+    function gameLoop(){
+      const now=Date.now(), elapsed=now-startTime;
+      if(elapsed>=600000){
+        clearInterval(spawnInterval);
+        gameRunning=false;
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.fillStyle='white'; ctx.font='bold 20px Arial'; ctx.textAlign='center';
+        ctx.fillText('THANKS TO SKYE YAN FOR MAKING THIS GAME',canvas.width/2,canvas.height/2);
         return;
       }
-      if (!gameRunning) return;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      movePlayer(); updateBlocks(); updateProjectiles(); updateExplosions();
-      drawPlayer(); blocks.forEach(b => { ctx.fillStyle = b.color; ctx.fillRect(b.x, b.y, b.width, b.height); });
-      drawProjectiles(); drawExplosions(); drawHUD(); drawWarning();
+      if(!gameRunning) return;
+
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      movePlayer();
+      updateBlocks();
+      updateProjectiles();
+      updateExplosions();
+      updateBuffs();
+      drawPlayer();
+
+      blocks.forEach(b=>{
+        ctx.fillStyle=b.color;
+        ctx.fillRect(b.x,b.y,b.width,b.height);
+      });
+
+      drawProjectiles();
+      drawExplosions();
+      drawHUD();
+      drawWarning();
+
       requestAnimationFrame(gameLoop);
     }
 
-    initGame();
+    // initial prompt
+    ctx.fillStyle='white'; ctx.font='18px Arial';
+    ctx.fillText('Click to start game & music',100,300);
   </script>
 </body>
 </html>

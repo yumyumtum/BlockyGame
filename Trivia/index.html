@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Simple Trivia Game</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 50px;
+    }
+    #game {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px #ccc;
+      width: 300px;
+      text-align: center;
+    }
+    .choice {
+      display: block;
+      margin: 10px 0;
+      padding: 10px;
+      background: #eee;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .choice:hover {
+      background: #ddd;
+    }
+    #nextBtn {
+      margin-top: 15px;
+      padding: 10px;
+      display: none;
+    }
+    #score {
+      margin-top: 15px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="game">
+  <h2 id="question">Loading...</h2>
+  <div id="choices"></div>
+  <button id="nextBtn">Next</button>
+  <div id="score"></div>
+</div>
+
+<script>
+  const questions = [
+    {
+      question: "What is the capital of France?",
+      choices: ["Paris", "London", "Berlin", "Madrid"],
+      answer: "Paris"
+    },
+    {
+      question: "Which planet is known as the Red Planet?",
+      choices: ["Earth", "Mars", "Venus", "Jupiter"],
+      answer: "Mars"
+    },
+    {
+      question: "What is 2 + 2?",
+      choices: ["3", "4", "5", "22"],
+      answer: "4"
+    }
+  ];
+
+  let currentQuestion = 0;
+  let score = 0;
+
+  const questionEl = document.getElementById('question');
+  const choicesEl = document.getElementById('choices');
+  const nextBtn = document.getElementById('nextBtn');
+  const scoreEl = document.getElementById('score');
+
+  function showQuestion() {
+    let q = questions[currentQuestion];
+    questionEl.textContent = q.question;
+    choicesEl.innerHTML = "";
+    nextBtn.style.display = "none";
+
+    q.choices.forEach(choice => {
+      let btn = document.createElement("button");
+      btn.textContent = choice;
+      btn.classList.add("choice");
+      btn.onclick = () => selectAnswer(btn, q.answer);
+      choicesEl.appendChild(btn);
+    });
+  }
+
+  function selectAnswer(button, correctAnswer) {
+    const buttons = document.querySelectorAll('.choice');
+    buttons.forEach(btn => btn.disabled = true);
+
+    if (button.textContent === correctAnswer) {
+      button.style.backgroundColor = "lightgreen";
+      score++;
+    } else {
+      button.style.backgroundColor = "tomato";
+    }
+
+    nextBtn.style.display = "inline-block";
+  }
+
+  nextBtn.addEventListener("click", () => {
+    currentQuestion++;
+    if (currentQuestion < questions.length) {
+      showQuestion();
+    } else {
+      endGame();
+    }
+  });
+
+  function endGame() {
+    questionEl.textContent = "Game Over!";
+    choicesEl.innerHTML = "";
+    nextBtn.style.display = "none";
+    scoreEl.textContent = `Your Score: ${score} / ${questions.length}`;
+  }
+
+  showQuestion();
+</script>
+
+</body>
+</html>

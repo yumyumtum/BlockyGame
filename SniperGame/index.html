@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Sniper Blood Screen Game</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: black; }
+    canvas { display: block; background: #111; }
+  </style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let target = {
+  x: -100,
+  y: canvas.height / 2,
+  width: 30,
+  height: 90,
+  speed: 5,
+  alive: true,
+  nextShotTime: Date.now() + 4000
+};
+
+let bullet = null;
+let bloodSplat = [];
+let screenBlood = [];
+let gameOver = false;
+let message = "";
+
+function drawScope() {
+  ctx.strokeStyle = "white";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(canvas.width / 2, canvas.height / 2, 200, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(canvas.width / 2 - 20, canvas.height / 2);
+  ctx.lineTo(canvas.width / 2 + 20, canvas.height / 2);
+  ctx.moveTo(canvas.width / 2, canvas.height / 2 - 20);
+  ctx.lineTo(canvas.width / 2, canvas.height / 2 + 20);
+  ctx.stroke();
+}
+
+function drawRealisticTarget(x, y) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = "#556B2F";
+  ctx.fillRect(-15, 0, 30, 50);
+  ctx.beginPath(); ctx.fillStyle = "#FFDAB9";
+  ctx.arc(0, -20, 15, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "#FFDAB9"; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(-15, 10); ctx.lineTo(-30, 30);
+  ctx.moveTo(15, 10); ctx.lineTo(30, 30); ctx.stroke();
+  ctx.strokeStyle = "#2F4F4F";
+  ctx.beginPath(); ctx.moveTo(-10, 50); ctx.lineTo(-10, 80);
+  ctx.moveTo(10, 50); ctx.lineTo(10, 80); ctx.stroke();
+  ctx.restore();
+}
+
+function drawBullet() {
+  if (bullet) {
+    ctx.fillStyle = "yellow";
+    ctx.beginPath();
+    ctx.arc(bullet.x, bullet.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawBlood() {
+  for (let i = 0; i < bloodSplat.length; i++) {
+    let b = bloodSplat[i];
+    ctx.fillStyle = "crimson";
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawScreenBlood() {
+  for (let i = 0; i < screenBlood.length; i++) {
+    let b = screenBlood[i];
+    ctx.fillStyle = "rgba(139,0,0," + b.opacity + ")";
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Full red overlay if player died
+  if (gameOver && message === "You got shot!") {
+    ctx.fillStyle = "rgba(139, 0, 0, 0.5)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+function drawMessage() {
+  if (message) {
+    ctx.fillStyle = "white";
+    ctx.font = "30px Arial";
+    ctx.fillText(message, canvas.width / 2 - 120, 50);
+  }
+}
+
+function update() {
+  if (!gameOver && target.alive) {
+    target.x += target.speed;
+    if (target.x > canvas.width + 100) {
+      target.x = -100;
+      target.y = canvas.height / 2 + Math.random() * 100 - 50;
+    }
+  }
+
+  if (target.alive && Date.now() > target.nextShotTime && !gameOver) {
+    gameOver = true;
+    message = "You got shot!";
+    for (let i = 0; i < 200; i++) {
+      screenBlood.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        size: Math.random() * 100 + 30,
+        opacity: 0.3 + Math.random() * 0.3
+      });
+    }
+  }
+
+  if (bullet) {
+    const dx = canvas.width / 2 - bullet.x;
+    const dy = canvas.height / 2 - bullet.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const speed = 20;
+
+    if (dist < speed) {
+      checkHit();
+      bullet = null;
+    } else {
+      bullet.x += (dx / dist) * speed;
+      bullet.y += (dy / dist) * speed;
+    }
+  }
+}
+
+function checkHit() {
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const tx = target.x;
+  const ty = target.y;
+
+  if (
+    cx >= tx - 15 && cx <= tx + 15 &&
+    cy >= ty - 60 && cy <= ty + 30
+  ) {
+    target.alive = false;
+    message = "Target down!";
+    for (let i = 0; i < 30; i++) {
+      bloodSplat.push({
+        x: tx,
+        y: ty - 20,
+        size: Math.random() * 5 + 2
+      });
+    }
+    for (let i = 0; i < 150; i++) {
+      screenBlood.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        size: Math.random() * 80 + 20,
+        opacity: 0.2 + Math.random() * 0.4
+      });
+    }
+  } else {
+    message = "Missed!";
+  }
+}
+
+function shootBullet() {
+  if (gameOver || bullet) return;
+  bullet = {
+    x: canvas.width / 2,
+    y: canvas.height
+  };
+}
+
+canvas.addEventListener("click", shootBullet);
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space") shootBullet();
+});
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawScope();
+  if (target.alive) drawRealisticTarget(target.x, target.y);
+  drawBullet();
+  drawBlood();
+  drawScreenBlood();
+  drawMessage();
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>

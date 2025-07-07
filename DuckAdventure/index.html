@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Duck Adventure - Chase & Shoot</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background-color: #d0f0c0;
+      margin: 0;
+    }
+    #game {
+      display: grid;
+      gap: 2px;
+      margin: 20px auto;
+    }
+    .cell {
+      width: 50px;
+      height: 50px;
+      background-color: #8fd694;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+    .duck { background-color: yellow; }
+    .star { background-color: gold; }
+    .puddle { background-color: #69a3f3; }
+    .projectile { background-color: cyan; }
+    #hud { display: flex; justify-content: center; gap: 40px; }
+  </style>
+</head>
+<body>
+  <h1>Duck Adventure</h1>
+  <div id="hud">
+    <div id="level">Level: 1</div>
+    <div id="score">Score: 0</div>
+  </div>
+  <div id="game"></div>
+
+  <script>
+    const game = document.getElementById("game");
+    const scoreDisplay = document.getElementById("score");
+    const levelDisplay = document.getElementById("level");
+
+    let level = 1;
+    let gridSize;
+    let duckPos;
+    let score = 0;
+    let totalStars = 0;
+    let cells = [];
+    let puddlePositions = [];
+    let projectilePositions = [];
+
+    let puddleMoveTimer;
+    let puddleShootTimer;
+    let projectileMoveTimer;
+
+    function initLevel() {
+      clearInterval(puddleMoveTimer);
+      clearInterval(puddleShootTimer);
+      clearInterval(projectileMoveTimer);
+
+      game.innerHTML = "";
+      cells = [];
+      puddlePositions = [];
+      projectilePositions = [];
+
+      gridSize = 10 + (level - 1);
+      const starCount = 5 + level * 2;
+      const puddleCount = 2 + level;
+
+      game.style.gridTemplateColumns = `repeat(${gridSize}, 50px)`;
+      game.style.gridTemplateRows    = `repeat(${gridSize}, 50px)`;
+
+      for (let i = 0; i < gridSize * gridSize; i++) {
+        const cell = document.createElement("div");
+        cell.classList.add("cell");
+        game.appendChild(cell);
+        cells.push(cell);
+      }
+
+      duckPos = 0;
+      drawDuck();
+
+      totalStars = starCount;
+      placeItem("star", "⭐", starCount);
+      placePuddles(puddleCount);
+
+      updateHUD();
+
+      puddleMoveTimer     = setInterval(movePuddles, 1000);
+      puddleShootTimer    = setInterval(shootProjectiles, 3000);
+      projectileMoveTimer = setInterval(moveProjectiles, 300);
+    }
+
+    function placeItem(type, emoji, count) {
+      for (let i = 0; i < count; i++) {
+        let pos;
+        do {
+          pos = Math.floor(Math.random() * cells.length);
+        } while (
+          cells[pos].textContent !== "" ||
+          pos === duckPos
+        );
+        cells[pos].textContent = emoji;
+        cells[pos].classList.add(type);
+      }
+    }
+
+    function placePuddles(count) {
+      for (let i = 0; i < count; i++) {
+        let pos;
+        do {
+          pos = Math.floor(Math.random() * cells.length);
+        } while (
+          cells[pos].textContent !== "" ||
+          pos === duckPos
+        );
+        puddlePositions.push(pos);
+        cells[pos].textContent = "💧";
+        cells[pos].classList.add("puddle");
+      }
+    }
+
+    function drawDuck() {
+      cells.forEach((cell, i) => {
+        if (i !== duckPos && cell.textContent === "🦆") {
+          cell.textContent = "";
+          cell.classList.remove("duck");
+        }
+      });
+      cells[duckPos].textContent = "🦆";
+      cells[duckPos].classList.add("duck");
+    }
+
+    function updateHUD() {
+      scoreDisplay.textContent = "Score: " + score;
+      levelDisplay.textContent = "Level: " + level;
+    }
+
+    function movePuddles() {
+      for (let i = 0; i < puddlePositions.length; i++) {
+        const pos = puddlePositions[i];
+        const x = pos % gridSize;
+        const y = Math.floor(pos / gridSize);
+        const duckX = duckPos % gridSize;
+        const duckY = Math.floor(duckPos / gridSize);
+
+        let newX = x, newY = y;
+        if (x < duckX)      newX++;
+        else if (x > duckX) newX--;
+        if (y < duckY)      newY++;
+        else if (y > duckY) newY--;
+
+        const newPos = newY * gridSize + newX;
+        if (newPos === duckPos) return endGame("You were caught by a puddle!");
+
+        puddlePositions[i] = newPos;
+      }
+      drawPuddles();
+    }
+
+    function drawPuddles() {
+      cells.forEach(cell => {
+        if (cell.textContent === "💧") {
+          cell.textContent = "";
+          cell.classList.remove("puddle");
+        }
+      });
+      puddlePositions.forEach(pos => {
+        cells[pos].textContent = "💧";
+        cells[pos].classList.add("puddle");
+      });
+    }
+
+    function shootProjectiles() {
+      // spawn a droplet at each puddle
+      puddlePositions.forEach(puddlePos => {
+        projectilePositions.push({ pos: puddlePos });
+      });
+    }
+
+    function moveProjectiles() {
+      // clear old droplets
+      cells.forEach(cell => {
+        if (cell.classList.contains("projectile")) {
+          cell.classList.remove("projectile");
+          if (cell.textContent === "💦") cell.textContent = "";
+        }
+      });
+
+      // move each droplet one step toward the duck
+      projectilePositions = projectilePositions.filter(p => {
+        const duckX = duckPos % gridSize;
+        const duckY = Math.floor(duckPos / gridSize);
+
+        let x = p.pos % gridSize;
+        let y = Math.floor(p.pos / gridSize);
+
+        // compute step
+        if (x < duckX)      x++;
+        else if (x > duckX) x--;
+        if (y < duckY)      y++;
+        else if (y > duckY) y--;
+
+        const newPos = y * gridSize + x;
+        if (newPos === duckPos) {
+          endGame("You were hit by water!");
+          return false;
+        }
+
+        p.pos = newPos;
+        cells[newPos].textContent    = "💦";
+        cells[newPos].classList.add("projectile");
+        return true;
+      });
+    }
+
+    function endGame(msg) {
+      clearInterval(puddleMoveTimer);
+      clearInterval(puddleShootTimer);
+      clearInterval(projectileMoveTimer);
+      alert(msg);
+      level++;
+      score = 0;
+      initLevel();
+    }
+
+    function moveDuck(e) {
+      const x = duckPos % gridSize;
+      const y = Math.floor(duckPos / gridSize);
+
+      if (e.key === "ArrowUp"    && y > 0)           duckPos -= gridSize;
+      if (e.key === "ArrowDown"  && y < gridSize-1)  duckPos += gridSize;
+      if (e.key === "ArrowLeft"  && x > 0)           duckPos -= 1;
+      if (e.key === "ArrowRight" && x < gridSize-1)  duckPos += 1;
+
+      const cell = cells[duckPos];
+      if (cell.classList.contains("star")) {
+        score++;
+        cell.classList.remove("star");
+        cell.textContent = "";
+        if (score === totalStars) {
+          alert("Level Complete!");
+          level++;
+          score = 0;
+          initLevel();
+          return;
+        }
+      }
+
+      drawDuck();
+      updateHUD();
+    }
+
+    window.addEventListener("keydown", moveDuck);
+    initLevel();
+  </script>
+</body>
+</html>

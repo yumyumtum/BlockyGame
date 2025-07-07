@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Duck Adventure</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background-color: #d0f0c0;
+    }
+    #game {
+      display: grid;
+      grid-template-columns: repeat(10, 50px);
+      grid-template-rows: repeat(10, 50px);
+      gap: 2px;
+      margin: 20px auto;
+      width: 520px;
+      height: 520px;
+    }
+    .cell {
+      width: 50px;
+      height: 50px;
+      background-color: #8fd694;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+    .duck { background-color: yellow; }
+    .star { background-color: gold; }
+    .puddle { background-color: #69a3f3; }
+  </style>
+</head>
+<body>
+  <h1>Duck Adventure</h1>
+  <p>Use arrow keys to move 🦆. Collect ⭐. Avoid 💧!</p>
+  <div id="score">Score: 0</div>
+  <div id="game"></div>
+
+  <script>
+    const game = document.getElementById("game");
+    const scoreDisplay = document.getElementById("score");
+    const gridSize = 10;
+    let duckPos = 0;
+    let score = 0;
+
+    // Create grid
+    const cells = [];
+    for (let i = 0; i < gridSize * gridSize; i++) {
+      const cell = document.createElement("div");
+      cell.classList.add("cell");
+      game.appendChild(cell);
+      cells.push(cell);
+    }
+
+    function placeItem(type, emoji, count) {
+      for (let i = 0; i < count; i++) {
+        let pos;
+        do {
+          pos = Math.floor(Math.random() * cells.length);
+        } while (cells[pos].textContent !== "" || pos === duckPos);
+        cells[pos].textContent = emoji;
+        cells[pos].classList.add(type);
+      }
+    }
+
+    function drawDuck() {
+      cells.forEach(cell => {
+        cell.classList.remove("duck");
+        if (cell.textContent === "🦆") cell.textContent = "";
+      });
+      cells[duckPos].classList.add("duck");
+      cells[duckPos].textContent = "🦆";
+    }
+
+    function updateGame() {
+      const cell = cells[duckPos];
+      if (cell.classList.contains("star")) {
+        score++;
+        cell.classList.remove("star");
+        cell.textContent = "";
+      } else if (cell.classList.contains("puddle")) {
+        score = 0;
+        alert("You fell in a puddle! 💧 Score reset.");
+      }
+      scoreDisplay.textContent = "Score: " + score;
+      drawDuck();
+    }
+
+    function moveDuck(e) {
+      const x = duckPos % gridSize;
+      const y = Math.floor(duckPos / gridSize);
+
+      if (e.key === "ArrowUp" && y > 0) duckPos -= gridSize;
+      if (e.key === "ArrowDown" && y < gridSize - 1) duckPos += gridSize;
+      if (e.key === "ArrowLeft" && x > 0) duckPos -= 1;
+      if (e.key === "ArrowRight" && x < gridSize - 1) duckPos += 1;
+
+      updateGame();
+    }
+
+    placeItem("star", "⭐", 10);
+    placeItem("puddle", "💧", 5);
+    drawDuck();
+
+    window.addEventListener("keydown", moveDuck);
+  </script>
+</body>
+</html>
