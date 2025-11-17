@@ -129,6 +129,59 @@
     const imgRight  = new Image(); imgRight.src    = 'rocket_50x50_right.png';
     const imgShadow = new Image(); imgShadow.src   = 'shadow_ship.png';
 
+    // Create missile image
+    const missileCanvas = document.createElement('canvas');
+    missileCanvas.width = 30;
+    missileCanvas.height = 40;
+    const missileCtx = missileCanvas.getContext('2d');
+
+    // Draw missile shape pointing up
+    missileCtx.fillStyle = '#FF4500'; // orange-red body
+    missileCtx.beginPath();
+    missileCtx.moveTo(15, 0); // tip
+    missileCtx.lineTo(10, 15); // left side
+    missileCtx.lineTo(10, 30); // left body
+    missileCtx.lineTo(20, 30); // right body
+    missileCtx.lineTo(20, 15); // right side
+    missileCtx.closePath();
+    missileCtx.fill();
+
+    // Add fins
+    missileCtx.fillStyle = '#8B0000'; // dark red fins
+    missileCtx.beginPath();
+    missileCtx.moveTo(10, 25);
+    missileCtx.lineTo(5, 30);
+    missileCtx.lineTo(10, 30);
+    missileCtx.closePath();
+    missileCtx.fill();
+
+    missileCtx.beginPath();
+    missileCtx.moveTo(20, 25);
+    missileCtx.lineTo(25, 30);
+    missileCtx.lineTo(20, 30);
+    missileCtx.closePath();
+    missileCtx.fill();
+
+    // Add warhead detail
+    missileCtx.fillStyle = '#FFD700'; // gold tip
+    missileCtx.beginPath();
+    missileCtx.moveTo(15, 0);
+    missileCtx.lineTo(12, 8);
+    missileCtx.lineTo(18, 8);
+    missileCtx.closePath();
+    missileCtx.fill();
+
+    // Add body stripe
+    missileCtx.strokeStyle = '#FFA500';
+    missileCtx.lineWidth = 2;
+    missileCtx.beginPath();
+    missileCtx.moveTo(15, 10);
+    missileCtx.lineTo(15, 25);
+    missileCtx.stroke();
+
+    const missileImage = new Image();
+    missileImage.src = missileCanvas.toDataURL();
+
     // — Sounds —
     const shootSound     = document.getElementById('shootSound'),
           missileSound   = document.getElementById('missileSound'),
@@ -211,7 +264,8 @@
         missiles.push({
           x: spaceship.x + 25 - 5 + i * 5,
           y: spaceship.y + 50,
-          width: 10, height: 25, speed: 2, homing: true
+          width: 10, height: 25, speed: 2, homing: true,
+          angle: 0  // Initial angle pointing up
         });
       }
     };
@@ -386,16 +440,25 @@
 
       // missiles: homing only if m.homing===true
       missiles = missiles.filter(m => {
+        let dx = 0, dy = 0;
         if(m.homing && enemies.length){
           let t = enemies.reduce((a,b)=>
             Math.hypot(a.x-m.x,a.y-m.y) < Math.hypot(b.x-m.x,b.y-m.y) ? a : b
           );
-          const dx=t.x-m.x, dy=t.y-m.y, mag=Math.hypot(dx,dy)||1;
+          dx = t.x - m.x;
+          dy = t.y - m.y;
+          const mag = Math.hypot(dx, dy) || 1;
           m.x += (dx/mag)*m.speed;
           m.y += (dy/mag)*m.speed;
+          // Calculate angle for homing missiles
+          m.angle = Math.atan2(dy, dx) + Math.PI/2;
         } else {
-          m.x += m.vx!==undefined ? m.vx : 0;
-          m.y += m.vy!==undefined ? m.vy : -m.speed;
+          dx = m.vx !== undefined ? m.vx : 0;
+          dy = m.vy !== undefined ? m.vy : -m.speed;
+          m.x += dx;
+          m.y += dy;
+          // Calculate angle for non-homing missiles
+          m.angle = Math.atan2(dy, dx) + Math.PI/2;
         }
         return m.y>-m.height && m.x>-m.width && m.x<canvas.width+m.width;
       });
@@ -506,7 +569,8 @@
                 width:5, height:10,
                 vx:Math.cos(ang)*speed,
                 vy:Math.sin(ang)*speed,
-                homing:false
+                homing:false,
+                angle: ang + Math.PI/2  // Initial angle based on direction
               });
             }
           }
@@ -661,11 +725,21 @@
         });
       }
 
-      // bullets & missiles
+      // bullets
       ctx.fillStyle='yellow';
       bullets.forEach(b=>ctx.fillRect(b.x,b.y,b.width,b.height));
-      ctx.fillStyle='orange';
-      missiles.forEach(m=>ctx.fillRect(m.x,m.y,m.width,m.height));
+
+      // missiles - draw with rotation
+      missiles.forEach(m => {
+        ctx.save();
+        // Translate to missile center
+        ctx.translate(m.x + m.width/2, m.y + m.height/2);
+        // Rotate based on flight direction
+        ctx.rotate(m.angle || 0);
+        // Draw missile image centered
+        ctx.drawImage(missileImage, -15, -20, 30, 40);
+        ctx.restore();
+      });
 
       // enemies
       enemies.forEach(e=>{
