@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Sniper COD-ish – Scope + Real Hits</title>
+<style>
+  body { margin:0; overflow:hidden; background:#000; cursor:none; }
+  #hud{
+    position:fixed; top:10px; left:10px;
+    color:#eaeaea; font-family:Consolas, monospace;
+    z-index:20; text-shadow:0 1px 2px #000;
+    user-select:none;
+  }
+  #dot{
+    position:fixed; top:50%; left:50%;
+    width:6px; height:6px; margin:-3px;
+    background:#f2f2f2; border-radius:50%;
+    z-index:20;
+  }
+
+  /* Scope overlay (more “realistic” than a plain circle) */
+  #scopeWrap{
+    position:fixed; inset:0;
+    display:none; pointer-events:none;
+    z-index:15;
+  }
+  #scopeVignette{
+    position:absolute; inset:0;
+    background:
+      radial-gradient(circle at center,
+        rgba(0,0,0,0.0) 0%,
+        rgba(0,0,0,0.0) 35%,
+        rgba(0,0,0,0.65) 55%,
+        rgba(0,0,0,0.95) 75%,
+        rgba(0,0,0,1.0) 100%);
+  }
+  #scopeRing{
+    position:absolute; inset:0;
+    background: radial-gradient(circle at center,
+      rgba(255,255,255,0.07) 0%,
+      rgba(255,255,255,0.00) 42%,
+      rgba(255,255,255,0.08) 43%,
+      rgba(255,255,255,0.00) 44%);
+    mix-blend-mode:screen;
+    opacity:0.6;
+  }
+  #reticle{
+    position:absolute; inset:0;
+  }
+  #reticle:before, #reticle:after{
+    content:"";
+    position:absolute; left:50%; top:50%;
+    background:rgba(255,255,255,0.85);
+    transform:translate(-50%,-50%);
+    box-shadow:0 0 2px rgba(0,0,0,0.9);
+  }
+  /* vertical line */
+  #reticle:before{
+    width:2px; height:220px;
+  }
+  /* horizontal line */
+  #reticle:after{
+    width:220px; height:2px;
+  }
+  /* tick marks */
+  .tick{
+    position:absolute; left:50%; top:50%;
+    width:2px; height:14px;
+    background:rgba(255,255,255,0.8);
+    transform-origin:50% 100%;
+    box-shadow:0 0 2px rgba(0,0,0,0.9);
+  }
+  /* small center dot */
+  #centerDot{
+    position:absolute; left:50%; top:50%;
+    width:5px; height:5px;
+    border:2px solid rgba(255,255,255,0.9);
+    border-radius:50%;
+    transform:translate(-50%,-50%);
+    box-shadow:0 0 3px rgba(0,0,0,0.9);
+  }
+
+  #msg{
+    position:fixed; right:10px; top:10px;
+    color:#ddd; font-family:Consolas, monospace;
+    z-index:20; opacity:0.85;
+    user-select:none;
+  }
+</style>
+</head>
+<body>
+
+<div id="hud">
+Click = lock | ESC = unlock<br>
+WASD move | SPACE jump | Left shoot | Hold Right scope<br>
+HP: <span id="hp">100</span> | Score: <span id="score">0</span>
+</div>
+<div id="msg"></div>
+<div id="dot"></div>
+
+<div id="scopeWrap">
+  <div id="scopeVignette"></div>
+  <div id="scopeRing"></div>
+  <div id="reticle"></div>
+  <div id="centerDot"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+<script>
+/* =========================================================
+   COD-ish Sniper Prototype (single-file, no assets)
+   ========================================================= */
+
+/* ================= SCENE ================= */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9fb3bf);
+scene.fog = new THREE.Fog(0x9fb3bf, 30, 380);
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 2000);
+camera.position.set(0, 2.0, 10);
+
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+/* ================= LIGHTING (less toy-ish) ================= */
+scene.add(new THREE.HemisphereLight(0xdde7ee, 0x2a2f35, 0.85));
+const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+sun.position.set(80, 120, 40);
+scene.add(sun);
+
+/* ================= GROUND ================= */
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(2000, 2000),
+  new THREE.MeshLambertMaterial({ color:0x2f3a33 })
+);
+ground.rotation.x = -Math.PI/2;
+ground.position.y = 0;
+scene.add(ground);
+
+/* Simple cover blocks (COD-ish “lanes”) */
+const cover = [];
+function addCover(x,z,w,h,d){
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(w,h,d),
+    new THREE.MeshLambertMaterial({ color:0x4a4f55 })
+  );
+  m.position.set(x, h/2, z);
+  scene.add(m);
+  cover.push(m);
+}
+for (let i=0;i<18;i++){
+  addCover((Math.random()-0.5)*260, -40 - Math.random()*320, 6+Math.random()*18, 2+Math.random()*4, 6+Math.random()*18);
+}
+
+/* ================= POINTER LOCK ================= */
+let locked = false;
+document.body.addEventListener("click", () => document.body.requestPointerLock());
+document.addEventListener("pointerlockchange", () => {
+  locked = (document.pointerLockElement === document.body);
+});
+
+/* ================= SMOOTH LOOK ================= */
+let yaw=0, pitch=0;
+let tyaw=0, tpitch=0;
+
+// tweak these to taste
+const sensitivity = 0.0021;   // higher = faster
+const smoothing   = 0.16;     // higher = smoother (but more “floaty”)
+
+addEventListener("mousemove", (e) => {
+  if (!locked) return;
+  tyaw   -= e.movementX * sensitivity;
+  tpitch -= e.movementY * sensitivity;
+  tpitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, tpitch));
+});
+
+/* ================= PLAYER MOVE + JUMP ================= */
+const keys = {};
+addEventListener("keydown", e => keys[e.code]=true);
+addEventListener("keyup", e => keys[e.code]=false);
+
+let yVel=0, onGround=true;
+function movePlayer(dt){
+  // apply smoothing
+  yaw   += (tyaw - yaw) * smoothing;
+  pitch += (tpitch - pitch) * smoothing;
+  camera.rotation.set(pitch, yaw, 0);
+
+  const speed = (scoped ? 5.5 : 10.0) * dt; // slower while scoped
+  const fwd   = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+  const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+
+  if (keys.KeyW) camera.position.addScaledVector(fwd, -speed);
+  if (keys.KeyS) camera.position.addScaledVector(fwd,  speed);
+  if (keys.KeyA) camera.position.addScaledVector(right, -speed);
+  if (keys.KeyD) camera.position.addScaledVector(right,  speed);
+
+  if (keys.Space && onGround) { yVel = 9.5; onGround=false; }
+
+  yVel -= 26*dt;
+  camera.position.y += yVel*dt;
+  if (camera.position.y < 2.0) { camera.position.y=2.0; yVel=0; onGround=true; }
+}
+
+/* ================= SCOPE ================= */
+const scopeWrap = document.getElementById("scopeWrap");
+const msg = document.getElementById("msg");
+const reticle = document.getElementById("reticle");
+
+let scoped = false;
+function setScope(on){
+  scoped = on;
+  camera.fov = on ? 18 : 75;
+  camera.updateProjectionMatrix();
+  scopeWrap.style.display = on ? "block" : "none";
+  document.getElementById("dot").style.display = on ? "none" : "block";
+}
+addEventListener("contextmenu", e => e.preventDefault());
+addEventListener("mousedown", e => { if (e.button===2) setScope(true); });
+addEventListener("mouseup",   e => { if (e.button===2) setScope(false); });
+
+/* Create tick marks once */
+(function buildTicks(){
+  // 8 ticks per axis
+  const ticks = [];
+  const positions = [-160,-120,-80,-40,40,80,120,160];
+  for (const p of positions){
+    const tV = document.createElement("div");
+    tV.className="tick";
+    tV.style.transform = `translate(-50%,-50%) translateY(${p}px)`;
+    reticle.appendChild(tV);
+
+    const tH = document.createElement("div");
+    tH.className="tick";
+    tH.style.width="14px"; tH.style.height="2px";
+    tH.style.transform = `translate(-50%,-50%) translateX(${p}px)`;
+    reticle.appendChild(tH);
+  }
+})();
+
+/* ================= HUMANS (better silhouette) ================= */
+function makeHumanMesh(){
+  const g = new THREE.Group();
+  const cloth = new THREE.MeshLambertMaterial({ color:0x7f1010 });
+  const dark  = new THREE.MeshLambertMaterial({ color:0x1d1f22 });
+  const skin  = new THREE.MeshLambertMaterial({ color:0xffd2c2 });
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.8, 0.55), cloth);
+  torso.position.y = 2.55;
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), skin);
+  head.position.y = 3.65;
+
+  const hips = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.55, 0.55), cloth);
+  hips.position.y = 1.75;
+
+  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.15, 0.35), cloth);
+  const armR = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.15, 0.35), cloth);
+  armL.position.set(-0.85, 2.55, 0);
+  armR.position.set( 0.85, 2.55, 0);
+
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.45, 1.35, 0.45), dark);
+  const legR = new THREE.Mesh(new THREE.BoxGeometry(0.45, 1.35, 0.45), dark);
+  legL.position.set(-0.35, 0.70, 0);
+  legR.position.set( 0.35, 0.70, 0);
+
+  // “rifle” silhouette to make it feel more COD-ish
+  const rifle = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.12, 0.12), dark);
+  rifle.position.set(0.55, 2.55, 0.55);
+
+  g.add(torso, head, hips, armL, armR, legL, legR, rifle);
+  g.userData = { torso, head, armL, armR, legL, legR };
+  return g;
+}
+
+class Enemy {
+  constructor(){
+    this.group = makeHumanMesh();
+    this.group.position.set((Math.random()-0.5)*260, 0, -90 - Math.random()*420);
+    scene.add(this.group);
+
+    this.dir = new THREE.Vector3(Math.random()-0.5, 0, Math.random()-0.5).normalize();
+    this.speed = 3.6 + Math.random()*1.4;
+    this.anim = Math.random()*10;
+
+    this.hp = 100;
+
+    // aiming behavior
+    this.turnSpeed = 2.4;          // higher = snaps faster
+    this.fireCooldown = 1.2 + Math.random()*1.0;
+    this.fireMinAlign = 0.90;      // must be mostly facing you to fire
+    this.spread = 0.015 + Math.random()*0.02; // smaller = more accurate
+  }
+
+  update(dt){
+    // move (patrol + bounce)
+    this.group.position.addScaledVector(this.dir, this.speed*dt);
+
+    const p = this.group.position;
+    if (p.x > 300) { p.x=300; this.dir.x*=-1; }
+    if (p.x < -300){ p.x=-300; this.dir.x*=-1; }
+    if (p.z > -30) { p.z=-30; this.dir.z*=-1; }
+    if (p.z < -550){ p.z=-550; this.dir.z*=-1; }
+
+    if (Math.random() < 0.01){
+      this.dir.set(Math.random()-0.5,0,Math.random()-0.5).normalize();
+    }
+
+    // run animation
+    this.anim += dt*10;
+    const u = this.group.userData;
+    u.legL.rotation.x =  Math.sin(this.anim)*1.05;
+    u.legR.rotation.x = -Math.sin(this.anim)*1.05;
+    u.armL.rotation.x = -Math.sin(this.anim)*0.55;
+    u.armR.rotation.x =  Math.sin(this.anim)*0.55;
+
+    // aim at player head (smooth rotation)
+    const aim = camera.position.clone(); aim.y += 0.45;
+    const lookM = new THREE.Matrix4().lookAt(this.group.position, aim, new THREE.Vector3(0,1,0));
+    const targetQ = new THREE.Quaternion().setFromRotationMatrix(lookM);
+    this.group.quaternion.slerp(targetQ, this.turnSpeed*dt);
+
+    // fire logic: only if aligned + cooldown
+    this.fireCooldown -= dt;
+    if (this.fireCooldown <= 0){
+      // check alignment
+      const forward = new THREE.Vector3(0,0,1).applyQuaternion(this.group.quaternion).normalize();
+      const toPlayer = aim.clone().sub(this.group.position).normalize();
+      const align = forward.dot(toPlayer); // 1 = perfectly aimed
+
+      if (align >= this.fireMinAlign){
+        this.fireCooldown = 0.85 + Math.random()*0.8;
+
+        // accuracy cone / spread
+        const dir = toPlayer.clone();
+        dir.x += (Math.random()-0.5)*this.spread;
+        dir.y += (Math.random()-0.5)*this.spread;
+        dir.z += (Math.random()-0.5)*this.spread;
+        dir.normalize();
+
+        spawnTracer(this.group.position.clone().add(new THREE.Vector3(0, 3.2, 0)), dir, true);
+
+        // enemy damage check (ray vs player)
+        // Use a small radius hit around camera position
+        const ray = new THREE.Raycaster(this.group.position.clone().add(new THREE.Vector3(0,3.2,0)), dir, 0, 999);
+        const t = ray.ray.distanceToPoint(camera.position);
+        if (t < 0.9){
+          damagePlayer(8); // tune this
+        }
+      } else {
+        // not aligned: try again soon
+        this.fireCooldown = 0.20 + Math.random()*0.25;
+      }
+    }
+  }
+
+  takeDamage(dmg){
+    this.hp -= dmg;
+    if (this.hp <= 0){
+      scene.remove(this.group);
+      return true;
+    }
+    return false;
+  }
+}
+
+/* ================= TRACERS (visible bullets) ================= */
+class Tracer {
+  constructor(pos, dir, enemy){
+    const mat = new THREE.MeshBasicMaterial({ color: enemy ? 0xffb000 : 0xffffff });
+    this.mesh = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 10), mat);
+    this.mesh.position.copy(pos);
+    this.vel = dir.clone().multiplyScalar(enemy ? 35 : 75);
+    this.life = 0.55; // seconds
+    scene.add(this.mesh);
+  }
+  update(dt){
+    this.mesh.position.addScaledVector(this.vel, dt);
+    this.life -= dt;
+    if (this.life <= 0){
+      scene.remove(this.mesh);
+      return false;
+    }
+    return true;
+  }
+}
+let tracers = [];
+function spawnTracer(pos, dir, enemy){
+  tracers.push(new Tracer(pos, dir, enemy));
+}
+
+/* ================= GAME STATE ================= */
+let enemies = [];
+function spawnEnemy(){ enemies.push(new Enemy()); }
+for (let i=0;i<8;i++) spawnEnemy();
+
+let score = 0;
+let hp = 100;
+const scoreEl = document.getElementById("score");
+const hpEl = document.getElementById("hp");
+
+function damagePlayer(d){
+  hp = Math.max(0, hp - d);
+  hpEl.textContent = String(hp);
+  msg.textContent = (hp <= 0) ? "YOU DIED — refresh to restart" : "";
+}
+
+/* ================= SHOOT (hitscan + tracer) ================= */
+const raycaster = new THREE.Raycaster();
+
+addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
+  if (!locked) return;
+  if (hp <= 0) return;
+
+  // Bullet direction from camera (correct)
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+
+  // show tracer
+  spawnTracer(camera.position.clone(), dir, false);
+
+  // damage via raycast (instant hit)
+  raycaster.set(camera.position.clone(), dir);
+
+  // We can raycast enemies by their group children (meshes)
+  const enemyMeshes = enemies.flatMap(en => en.group.children);
+  const hit = raycaster.intersectObjects(enemyMeshes, false)[0];
+  if (!hit) return;
+
+  // find which enemy owns the hit object
+  const owner = enemies.find(en => en.group.children.includes(hit.object));
+  if (!owner) return;
+
+  // headshot if hit is head mesh or high Y relative to enemy
+  const isHead = (hit.object.geometry && hit.object.geometry.type === "SphereGeometry") ||
+                 (hit.point.y - owner.group.position.y > 3.2);
+
+  const dmg = isHead ? 120 : 70; // tune
+  const dead = owner.takeDamage(dmg);
+  if (dead){
+    enemies = enemies.filter(x => x !== owner);
+    spawnEnemy(); // infinite enemies
+    score++;
+    scoreEl.textContent = String(score);
+  }
+});
+
+/* ================= LOOP ================= */
+const clock = new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+
+  if (hp > 0) {
+    movePlayer(dt);
+    enemies.forEach(e => e.update(dt));
+  }
+
+  // update tracers
+  tracers = tracers.filter(t => t.update(dt));
+
+  renderer.render(scene, camera);
+}
+animate();
+
+/* ================= RESIZE ================= */
+addEventListener("resize", () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
