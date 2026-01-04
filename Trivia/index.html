@@ -2,128 +2,471 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Simple Trivia Game</title>
+  <title>Enhanced Trivia Game</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: #f4f4f4;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       display: flex;
       flex-direction: column;
       align-items: center;
-      margin-top: 50px;
-    }
-    #game {
-      background: white;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
       padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 0 10px #ccc;
-      width: 300px;
+    }
+
+    #container {
+      background: white;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+      width: 90%;
+      max-width: 500px;
       text-align: center;
     }
-    .choice {
-      display: block;
-      margin: 10px 0;
-      padding: 10px;
-      background: #eee;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
+
+    h1 {
+      color: #667eea;
+      margin-top: 0;
     }
-    .choice:hover {
-      background: #ddd;
-    }
-    #nextBtn {
-      margin-top: 15px;
-      padding: 10px;
+
+    .screen {
       display: none;
     }
-    #score {
-      margin-top: 15px;
+
+    .screen.active {
+      display: block;
+    }
+
+    input[type="text"], select {
+      width: 100%;
+      padding: 12px;
+      margin: 15px 0;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+
+    input[type="text"]:focus, select:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    button {
+      padding: 12px 30px;
+      margin: 10px 5px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background: #5568d3;
+    }
+
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .choice {
+      display: block;
+      width: 100%;
+      margin: 10px 0;
+      padding: 15px;
+      background: #f5f5f5;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      text-align: left;
+      transition: all 0.3s;
+    }
+
+    .choice:hover:not(:disabled) {
+      background: #e8e8e8;
+      border-color: #667eea;
+    }
+
+    .choice:disabled {
+      cursor: not-allowed;
+    }
+
+    .choice.correct {
+      background: #d4edda !important;
+      border-color: #28a745 !important;
+    }
+
+    .choice.incorrect {
+      background: #f8d7da !important;
+      border-color: #dc3545 !important;
+    }
+
+    #loading {
+      font-size: 18px;
+      color: #667eea;
+      margin: 20px 0;
+    }
+
+    .score-display {
+      font-size: 24px;
+      font-weight: bold;
+      color: #667eea;
+      margin: 20px 0;
+    }
+
+    .ranking-info {
+      background: #f0f0f0;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+
+    .ranking-info p {
+      margin: 8px 0;
+      font-size: 16px;
+    }
+
+    #question {
+      font-size: 20px;
+      margin: 20px 0;
+      color: #333;
+    }
+
+    .question-counter {
+      color: #999;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+
+    .error {
+      color: #dc3545;
+      margin: 10px 0;
     }
   </style>
 </head>
 <body>
 
-<div id="game">
-  <h2 id="question">Loading...</h2>
-  <div id="choices"></div>
-  <button id="nextBtn">Next</button>
-  <div id="score"></div>
+<div id="container">
+  <h1>🎯 Trivia Challenge</h1>
+
+  <!-- Welcome Screen -->
+  <div id="welcomeScreen" class="screen active">
+    <h2>Welcome!</h2>
+    <p>Test your knowledge with 5 random questions</p>
+    <label for="nameInput">Enter your name:</label>
+    <input type="text" id="nameInput" placeholder="Your name" maxlength="30">
+    <label for="ageSelect">Select your age group:</label>
+    <select id="ageSelect">
+      <option value="">-- Choose Age Group --</option>
+      <option value="under-13">Under 13</option>
+      <option value="13-17">13-17</option>
+      <option value="18-24">18-24</option>
+      <option value="25-34">25-34</option>
+      <option value="35-44">35-44</option>
+      <option value="45-54">45-54</option>
+      <option value="55+">55+</option>
+    </select>
+    <button id="startBtn" onclick="startGame()">Start Game</button>
+  </div>
+
+  <!-- Loading Screen -->
+  <div id="loadingScreen" class="screen">
+    <div id="loading">Loading questions... 🎲</div>
+  </div>
+
+  <!-- Game Screen -->
+  <div id="gameScreen" class="screen">
+    <div class="question-counter" id="questionCounter"></div>
+    <h2 id="question">Loading...</h2>
+    <div id="choices"></div>
+    <button id="nextBtn" onclick="nextQuestion()" style="display: none;">Next Question</button>
+  </div>
+
+  <!-- Results Screen -->
+  <div id="resultsScreen" class="screen">
+    <h2>🎉 Game Complete!</h2>
+    <div class="score-display" id="finalScore"></div>
+    <div class="ranking-info" id="rankingInfo"></div>
+    <button onclick="playAgain()">Play Again</button>
+    <button onclick="viewAllScores()">View All Scores</button>
+  </div>
+
+  <!-- Leaderboard Screen -->
+  <div id="leaderboardScreen" class="screen">
+    <h2>📊 All Scores</h2>
+    <div id="leaderboardList"></div>
+    <button onclick="backToResults()">Back to Results</button>
+    <button onclick="playAgain()">Play Again</button>
+  </div>
 </div>
 
 <script>
-  const questions = [
-    {
-      question: "What is the capital of France?",
-      choices: ["Paris", "London", "Berlin", "Madrid"],
-      answer: "Paris"
-    },
-    {
-      question: "Which planet is known as the Red Planet?",
-      choices: ["Earth", "Mars", "Venus", "Jupiter"],
-      answer: "Mars"
-    },
-    {
-      question: "What is 2 + 2?",
-      choices: ["3", "4", "5", "22"],
-      answer: "4"
-    }
-  ];
-
+  let playerName = '';
+  let playerAge = '';
+  let questions = [];
   let currentQuestion = 0;
   let score = 0;
+  const TOTAL_QUESTIONS = 5;
 
-  const questionEl = document.getElementById('question');
-  const choicesEl = document.getElementById('choices');
-  const nextBtn = document.getElementById('nextBtn');
-  const scoreEl = document.getElementById('score');
+  // Screen management
+  function showScreen(screenId) {
+    document.querySelectorAll('.screen').forEach(screen => {
+      screen.classList.remove('active');
+    });
+    document.getElementById(screenId).classList.add('active');
+  }
 
-  function showQuestion() {
-    let q = questions[currentQuestion];
-    questionEl.textContent = q.question;
-    choicesEl.innerHTML = "";
-    nextBtn.style.display = "none";
+  // Start game
+  async function startGame() {
+    const nameInput = document.getElementById('nameInput');
+    const ageSelect = document.getElementById('ageSelect');
+
+    playerName = nameInput.value.trim();
+    playerAge = ageSelect.value;
+
+    if (!playerName) {
+      alert('Please enter your name!');
+      return;
+    }
+
+    if (!playerAge) {
+      alert('Please select your age group!');
+      return;
+    }
+
+    showScreen('loadingScreen');
+
+    try {
+      await fetchQuestions();
+      currentQuestion = 0;
+      score = 0;
+      showScreen('gameScreen');
+      displayQuestion();
+    } catch (error) {
+      showScreen('welcomeScreen');
+      alert('Failed to load questions. Please try again. Error: ' + error.message);
+    }
+  }
+
+  // Fetch questions from Open Trivia DB API
+  async function fetchQuestions() {
+    try {
+      const response = await fetch(`https://opentdb.com/api.php?amount=${TOTAL_QUESTIONS}&type=multiple`);
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch questions');
+      }
+
+      const data = await response.json();
+
+      if (data.response_code !== 0) {
+        throw new Error('API returned an error');
+      }
+
+      // Format questions
+      questions = data.results.map(q => {
+        // Decode HTML entities
+        const textarea = document.createElement('textarea');
+
+        textarea.innerHTML = q.question;
+        const question = textarea.value;
+
+        textarea.innerHTML = q.correct_answer;
+        const correctAnswer = textarea.value;
+
+        const incorrectAnswers = q.incorrect_answers.map(ans => {
+          textarea.innerHTML = ans;
+          return textarea.value;
+        });
+
+        // Shuffle choices
+        const choices = [...incorrectAnswers, correctAnswer].sort(() => Math.random() - 0.5);
+
+        return {
+          question: question,
+          choices: choices,
+          answer: correctAnswer,
+          category: q.category,
+          difficulty: q.difficulty
+        };
+      });
+    } catch (error) {
+      console.error('Error fetching questions:', error);
+      throw error;
+    }
+  }
+
+  // Display current question
+  function displayQuestion() {
+    const q = questions[currentQuestion];
+    const questionEl = document.getElementById('question');
+    const choicesEl = document.getElementById('choices');
+    const counterEl = document.getElementById('questionCounter');
+    const nextBtn = document.getElementById('nextBtn');
+
+    counterEl.textContent = `Question ${currentQuestion + 1} of ${TOTAL_QUESTIONS}`;
+    questionEl.innerHTML = `${q.question}<br><small style="color: #999;">(${q.category} - ${q.difficulty})</small>`;
+    choicesEl.innerHTML = '';
+    nextBtn.style.display = 'none';
 
     q.choices.forEach(choice => {
-      let btn = document.createElement("button");
+      const btn = document.createElement('button');
       btn.textContent = choice;
-      btn.classList.add("choice");
+      btn.classList.add('choice');
       btn.onclick = () => selectAnswer(btn, q.answer);
       choicesEl.appendChild(btn);
     });
   }
 
+  // Handle answer selection
   function selectAnswer(button, correctAnswer) {
     const buttons = document.querySelectorAll('.choice');
     buttons.forEach(btn => btn.disabled = true);
 
     if (button.textContent === correctAnswer) {
-      button.style.backgroundColor = "lightgreen";
+      button.classList.add('correct');
       score++;
     } else {
-      button.style.backgroundColor = "tomato";
+      button.classList.add('incorrect');
+      // Highlight correct answer
+      buttons.forEach(btn => {
+        if (btn.textContent === correctAnswer) {
+          btn.classList.add('correct');
+        }
+      });
     }
 
-    nextBtn.style.display = "inline-block";
+    document.getElementById('nextBtn').style.display = 'inline-block';
   }
 
-  nextBtn.addEventListener("click", () => {
+  // Next question
+  function nextQuestion() {
     currentQuestion++;
     if (currentQuestion < questions.length) {
-      showQuestion();
+      displayQuestion();
     } else {
       endGame();
     }
-  });
-
-  function endGame() {
-    questionEl.textContent = "Game Over!";
-    choicesEl.innerHTML = "";
-    nextBtn.style.display = "none";
-    scoreEl.textContent = `Your Score: ${score} / ${questions.length}`;
   }
 
-  showQuestion();
+  // End game and show results
+  function endGame() {
+    saveScore();
+    showResults();
+  }
+
+  // Save score to localStorage
+  function saveScore() {
+    const scores = getScores();
+
+    const newScore = {
+      name: playerName,
+      age: playerAge,
+      score: score,
+      total: TOTAL_QUESTIONS,
+      date: new Date().toISOString(),
+      timestamp: Date.now()
+    };
+
+    scores.push(newScore);
+    localStorage.setItem('triviaScores', JSON.stringify(scores));
+  }
+
+  // Get all scores from localStorage
+  function getScores() {
+    const scoresJson = localStorage.getItem('triviaScores');
+    return scoresJson ? JSON.parse(scoresJson) : [];
+  }
+
+  // Show results
+  function showResults() {
+    const scores = getScores();
+    const percentage = Math.round((score / TOTAL_QUESTIONS) * 100);
+
+    document.getElementById('finalScore').textContent = `${score} / ${TOTAL_QUESTIONS} (${percentage}%)`;
+
+    // Calculate ranking
+    const totalPlayers = scores.length;
+    const betterScores = scores.filter(s => s.score > score).length;
+    const rank = betterScores + 1;
+
+    // Calculate age group ranking
+    const ageGroupScores = scores.filter(s => s.age === playerAge);
+    const ageGroupTotal = ageGroupScores.length;
+    const betterAgeScores = ageGroupScores.filter(s => s.score > score).length;
+    const ageRank = betterAgeScores + 1;
+
+    const rankingHtml = `
+      <p><strong>Overall Ranking:</strong> ${rank} out of ${totalPlayers} players</p>
+      <p><strong>Age Group (${getAgeGroupLabel(playerAge)}):</strong> ${ageRank} out of ${ageGroupTotal} players</p>
+      <p><strong>Player:</strong> ${playerName}</p>
+    `;
+
+    document.getElementById('rankingInfo').innerHTML = rankingHtml;
+    showScreen('resultsScreen');
+  }
+
+  // Get age group label
+  function getAgeGroupLabel(ageValue) {
+    const ageSelect = document.getElementById('ageSelect');
+    const option = Array.from(ageSelect.options).find(opt => opt.value === ageValue);
+    return option ? option.textContent : ageValue;
+  }
+
+  // View all scores
+  function viewAllScores() {
+    const scores = getScores();
+    const sorted = scores.sort((a, b) => b.score - a.score || b.timestamp - a.timestamp);
+
+    let html = '<div style="max-height: 400px; overflow-y: auto; text-align: left;">';
+
+    if (sorted.length === 0) {
+      html += '<p style="text-align: center;">No scores yet!</p>';
+    } else {
+      html += '<table style="width: 100%; border-collapse: collapse;">';
+      html += '<tr style="background: #f0f0f0;"><th style="padding: 8px;">Rank</th><th>Name</th><th>Age</th><th>Score</th><th>Date</th></tr>';
+
+      sorted.forEach((s, index) => {
+        const date = new Date(s.date).toLocaleDateString();
+        const percentage = Math.round((s.score / s.total) * 100);
+        const isCurrentPlayer = s.timestamp === scores[scores.length - 1].timestamp;
+        const rowStyle = isCurrentPlayer ? 'background: #ffffcc;' : '';
+
+        html += `<tr style="${rowStyle}">
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${index + 1}</td>
+          <td style="border-bottom: 1px solid #ddd;">${s.name}${isCurrentPlayer ? ' ⭐' : ''}</td>
+          <td style="border-bottom: 1px solid #ddd;">${getAgeGroupLabel(s.age)}</td>
+          <td style="border-bottom: 1px solid #ddd;">${s.score}/${s.total} (${percentage}%)</td>
+          <td style="border-bottom: 1px solid #ddd;">${date}</td>
+        </tr>`;
+      });
+
+      html += '</table>';
+    }
+
+    html += '</div>';
+    document.getElementById('leaderboardList').innerHTML = html;
+    showScreen('leaderboardScreen');
+  }
+
+  // Back to results
+  function backToResults() {
+    showScreen('resultsScreen');
+  }
+
+  // Play again
+  function playAgain() {
+    document.getElementById('nameInput').value = playerName;
+    document.getElementById('ageSelect').value = playerAge;
+    showScreen('welcomeScreen');
+  }
 </script>
 
 </body>
