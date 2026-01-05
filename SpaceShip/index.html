@@ -336,6 +336,9 @@
 
     // — Spawn enemies (10% blinking) —
     function spawnEnemy(){
+      // Don't spawn enemies when paused, game over, or menu is active
+      if(paused || gameOver || menuActive) return;
+      
       const roll=Math.random(), side=Math.floor(Math.random()*3);
       const e = {
         width:50,height:50,x:0,y:0,vx:0,vy:0,
