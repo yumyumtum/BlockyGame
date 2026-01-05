@@ -195,6 +195,7 @@
     let spaceship = { x:canvas.width/2-25, y:canvas.height-70, width:50, height:50, speed:5 };
     let bullets = [], missiles = [], enemies = [], enemyBullets = [];
     let stars = [], backgroundStars = [], assistShips = [], shadowShips = [], hexItems = [];
+    let explosions = []; // explosion effects
     let gameOver=false, paused=false, keys={}, rocketCount=0, killCount=0, goldenStars=0;
     let lastShotTime=0, gameStartTime=Date.now(), gameOverHandled=false;
 
@@ -223,6 +224,74 @@
     // — Helpers —
     function isColliding(a,b){
       return !(a.x>b.x+b.width||a.x+a.width<b.x||a.y>b.y+b.height||a.y+a.height<b.y);
+    }
+    
+    // Create explosion effect
+    function createExplosion(x, y, size, color, canKill=true){
+      const particles = [];
+      const particleCount = Math.floor(size/3) + 10;
+      for(let i=0; i<particleCount; i++){
+        const angle = Math.random()*Math.PI*2;
+        const speed = 1 + Math.random()*3;
+        particles.push({
+          x: x, y: y,
+          vx: Math.cos(angle)*speed,
+          vy: Math.sin(angle)*speed,
+          life: 1,
+          size: 2 + Math.random()*4
+        });
+      }
+      explosions.push({
+        x: x, y: y,
+        radius: 0,
+        maxRadius: size,
+        life: 1,
+        color: color,
+        particles: particles,
+        canKill: canKill,
+        damageDealt: false
+      });
+    }
+    
+    // Kill enemy with explosion effects
+    function killEnemy(e, index){
+      explosionSound.currentTime=0; explosionSound.play();
+      const cx = e.x + 25, cy = e.y + 25;
+      
+      // Different explosion behaviors based on enemy type
+      if(e.type === 'blinking'){
+        // Large explosion that can kill player (3x normal size)
+        createExplosion(cx, cy, 240, '#FFD700', true);
+        // Drop pickup
+        if(Math.random()<0.5) stars.push({x:e.x+20,y:e.y,size:20});
+        else assistShips.push({x:e.x+20,y:e.y,size:20});
+      } else if(e.type === 'spinning'){
+        // Medium explosion + spawn 2 smaller enemies
+        createExplosion(cx, cy, 50, '#FF4500', true);
+        // Spawn smaller chasing enemies
+        for(let i=0; i<2; i++){
+          const angle = Math.random()*Math.PI*2;
+          enemies.push({
+            width:25, height:25, 
+            x: cx + Math.cos(angle)*30 - 12.5,
+            y: cy + Math.sin(angle)*30 - 12.5,
+            vx: Math.cos(angle)*2*speedMultiplier,
+            vy: Math.sin(angle)*2*speedMultiplier,
+            angle:0, spinSpeed:0.15, fireCooldown:0,
+            type:'mini', hp:1, isSmall:true
+          });
+        }
+      } else if(e.type === 'mini'){
+        // Small explosion
+        createExplosion(cx, cy, 25, '#FF6600', true);
+      } else {
+        // Firing type - normal explosion
+        createExplosion(cx, cy, 40, '#FF0000', true);
+      }
+      
+      enemies.splice(index, 1);
+      killCount++; 
+      if(killCount%10===0) rocketCount++;
     }
     function spawnShadow(){
       const w=30,h=30, len=shadowShips.length;
@@ -418,18 +487,12 @@
 
       // laser kills
       if(laserActive){
-        const lw=spaceship.width*10,
+        const lw=spaceship.width*3,
               lx=spaceship.x+spaceship.width/2-lw/2;
         const lr={x:lx,y:0,width:lw,height:spaceship.y};
         for(let i=enemies.length-1;i>=0;i--){
           if(isColliding(lr,enemies[i])){
-            explosionSound.currentTime=0; explosionSound.play();
-            if(enemies[i].type==='blinking'){
-              if(Math.random()<0.5) stars.push({x:enemies[i].x+20,y:enemies[i].y,size:20});
-              else assistShips.push({x:enemies[i].x+20,y:enemies[i].y,size:20});
-            }
-            enemies.splice(i,1);
-            killCount++; if(killCount%10===0) rocketCount++;
+            killEnemy(enemies[i], i);
           }
         }
       }
@@ -470,12 +533,12 @@
 
       for(let i=enemies.length-1;i>=0;i--){
         const e = enemies[i];
-        // chase at lvl>=5
-        if(level>=5){
+        // chase at lvl>=5 OR if mini enemy
+        if(level>=5 || e.type==='mini'){
           const tx=spaceship.x+25, ty=spaceship.y+25,
-                ex=e.x+25, ey=e.y+25,
+                ex=e.x+e.width/2, ey=e.y+e.height/2,
                 dx=tx-ex, dy=ty-ey, d=Math.hypot(dx,dy)||1,
-                cs=1.5*speedMultiplier;
+                cs=(e.type==='mini'?2.5:1.5)*speedMultiplier;
           e.vx = dx/d*cs;
           e.vy = dy/d*cs;
         }
@@ -489,7 +552,7 @@
           e.x += e.vx;
           e.y += e.vy;
         }
-        if(e.type==='spinning'||e.type==='blinking') e.angle += e.spinSpeed;
+        if(e.type==='spinning'||e.type==='blinking'||e.type==='mini') e.angle += e.spinSpeed;
 
         // firing
         if(e.type==='firing' && --e.fireCooldown <= 0){
@@ -502,9 +565,7 @@
         // collision with ship
         if(isColliding(shipRect,e)){
           if(undeadActive){
-            explosionSound.currentTime=0; explosionSound.play();
-            enemies.splice(i,1);
-            killCount++; if(killCount%10===0) rocketCount++;
+            killEnemy(e, i);
           } else {
             gameOver = true;
           }
@@ -515,13 +576,7 @@
           if(isColliding(e,bullets[j])){
             bullets.splice(j,1); e.hp--;
             if(e.hp<=0){
-              explosionSound.currentTime=0; explosionSound.play();
-              if(e.type==='blinking'){
-                if(Math.random()<0.5) stars.push({x:e.x+20,y:e.y,size:20});
-                else assistShips.push({x:e.x+20,y:e.y,size:20});
-              }
-              enemies.splice(i,1);
-              killCount++; if(killCount%10===0) rocketCount++;
+              killEnemy(e, i);
             }
             break;
           }
@@ -531,13 +586,7 @@
           if(isColliding(e,missiles[j])){
             missiles.splice(j,1); e.hp-=2;
             if(e.hp<=0){
-              explosionSound.currentTime=0; explosionSound.play();
-              if(e.type==='blinking'){
-                if(Math.random()<0.5) stars.push({x:e.x+20,y:e.y,size:20});
-                else assistShips.push({x:e.x+20,y:e.y,size:20});
-              }
-              enemies.splice(i,1);
-              killCount++; if(killCount%10===0) rocketCount++;
+              killEnemy(e, i);
             }
             break;
           }
@@ -632,9 +681,7 @@
             if(isColliding({x:sx,y:sy,width:s.width,height:s.height}, enemies[j])){
               enemies[j].hp--;
               if(enemies[j].hp<=0){
-                explosionSound.currentTime=0; explosionSound.play();
-                enemies.splice(j,1);
-                killCount++; if(killCount%10===0) rocketCount++;
+                killEnemy(enemies[j], j);
               }
             }
           }
@@ -650,9 +697,7 @@
             if(isColliding({x:sx,y:sy,width:s.width,height:s.height}, enemies[j])){
               enemies[j].hp--;
               if(enemies[j].hp<=0){
-                explosionSound.currentTime=0; explosionSound.play();
-                enemies.splice(j,1);
-                killCount++; if(killCount%10===0) rocketCount++;
+                killEnemy(enemies[j], j);
               }
               destroyed = true;
             }
@@ -667,6 +712,35 @@
           }
           if(destroyed) shadowShips.splice(i,1);
         }
+      }
+      
+      // *** UPDATE EXPLOSIONS ***
+      const shipRect2 = { x:spaceship.x, y:spaceship.y, width:spaceship.width, height:spaceship.height };
+      for(let i=explosions.length-1; i>=0; i--){
+        const exp = explosions[i];
+        exp.life -= 0.03;
+        exp.radius = exp.maxRadius * (1 - exp.life);
+        
+        // Update particles
+        exp.particles.forEach(p=>{
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vx *= 0.96;
+          p.vy *= 0.96;
+          p.life -= 0.025;
+        });
+        exp.particles = exp.particles.filter(p=>p.life>0);
+        
+        // Check if explosion kills player (only during expansion phase)
+        if(exp.canKill && !exp.damageDealt && exp.life > 0.5 && !undeadActive){
+          const dist = Math.hypot(spaceship.x+25-exp.x, spaceship.y+25-exp.y);
+          if(dist < exp.radius + 20){
+            gameOver = true;
+          }
+        }
+        if(exp.life < 0.5) exp.damageDealt = true;
+        
+        if(exp.life <= 0) explosions.splice(i, 1);
       }
     }
 
@@ -692,11 +766,53 @@
         ctx.fillStyle='rgba(0,255,255,0.5)'; ctx.fill();
       }
 
-      // laser beam
+      // laser beam with cool effects
       if(laserActive){
-        const lw=spaceship.width*10,
+        const lw=spaceship.width*3,
               lx=spaceship.x+spaceship.width/2-lw/2;
-        ctx.fillStyle='cyan'; ctx.fillRect(lx,0,lw,spaceship.y);
+        const laserTime = Date.now();
+        
+        // Outer glow (pulsing)
+        const pulseSize = 20 + Math.sin(laserTime/50)*8;
+        const gradient1 = ctx.createLinearGradient(lx-pulseSize, 0, lx+lw+pulseSize, 0);
+        gradient1.addColorStop(0, 'rgba(0,255,255,0)');
+        gradient1.addColorStop(0.3, 'rgba(0,255,255,0.3)');
+        gradient1.addColorStop(0.5, 'rgba(100,200,255,0.5)');
+        gradient1.addColorStop(0.7, 'rgba(0,255,255,0.3)');
+        gradient1.addColorStop(1, 'rgba(0,255,255,0)');
+        ctx.fillStyle=gradient1;
+        ctx.fillRect(lx-pulseSize,0,lw+pulseSize*2,spaceship.y);
+        
+        // Middle beam (electric effect)
+        const gradient2 = ctx.createLinearGradient(lx, 0, lx+lw, 0);
+        gradient2.addColorStop(0, 'rgba(100,200,255,0.8)');
+        gradient2.addColorStop(0.5, 'rgba(255,255,255,1)');
+        gradient2.addColorStop(1, 'rgba(100,200,255,0.8)');
+        ctx.fillStyle=gradient2;
+        ctx.fillRect(lx+lw*0.2,0,lw*0.6,spaceship.y);
+        
+        // Core beam (bright white)
+        ctx.fillStyle='rgba(255,255,255,0.9)';
+        ctx.fillRect(lx+lw*0.4,0,lw*0.2,spaceship.y);
+        
+        // Electric sparks along the beam
+        for(let sy=0; sy<spaceship.y; sy+=30){
+          const sparkOffset = Math.sin(laserTime/30 + sy*0.1) * (lw*0.4);
+          ctx.fillStyle='rgba(255,255,255,0.9)';
+          ctx.beginPath();
+          ctx.arc(lx+lw/2+sparkOffset, sy, 3+Math.random()*3, 0, Math.PI*2);
+          ctx.fill();
+        }
+        
+        // Muzzle flash at ship
+        const muzzleGrad = ctx.createRadialGradient(spaceship.x+spaceship.width/2, spaceship.y, 0, spaceship.x+spaceship.width/2, spaceship.y, 40);
+        muzzleGrad.addColorStop(0, 'rgba(255,255,255,1)');
+        muzzleGrad.addColorStop(0.3, 'rgba(0,255,255,0.8)');
+        muzzleGrad.addColorStop(1, 'rgba(0,255,255,0)');
+        ctx.fillStyle=muzzleGrad;
+        ctx.beginPath();
+        ctx.arc(spaceship.x+spaceship.width/2, spaceship.y, 40, 0, Math.PI*2);
+        ctx.fill();
       }
 
       // pick ship image
@@ -747,13 +863,22 @@
       // enemies
       enemies.forEach(e=>{
         ctx.save();
-        ctx.translate(e.x+25,e.y+25);
-        if(e.type==='spinning'||e.type==='blinking') ctx.rotate(e.angle);
-        ctx.fillStyle=e.type==='blinking'
-          ?(Math.floor(now/100)%2===0?'white':'gold')
-          :(e.type==='spinning'?'red':'purple');
-        ctx.beginPath(); ctx.arc(0,-7.5,20,Math.PI,0); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(0,2.5,25,15,0,0,Math.PI*2); ctx.fill();
+        const halfW = e.width/2, halfH = e.height/2;
+        ctx.translate(e.x+halfW, e.y+halfH);
+        if(e.type==='spinning'||e.type==='blinking'||e.type==='mini') ctx.rotate(e.angle);
+        
+        // Different colors and sizes
+        if(e.type==='mini'){
+          ctx.fillStyle='orange';
+          ctx.beginPath(); ctx.arc(0,-3,10,Math.PI,0); ctx.fill();
+          ctx.beginPath(); ctx.ellipse(0,1,12,7,0,0,Math.PI*2); ctx.fill();
+        } else {
+          ctx.fillStyle=e.type==='blinking'
+            ?(Math.floor(now/100)%2===0?'white':'gold')
+            :(e.type==='spinning'?'red':'purple');
+          ctx.beginPath(); ctx.arc(0,-7.5,20,Math.PI,0); ctx.fill();
+          ctx.beginPath(); ctx.ellipse(0,2.5,25,15,0,0,Math.PI*2); ctx.fill();
+        }
         ctx.restore();
       });
 
@@ -773,6 +898,44 @@
         ctx.lineTo(d.x,     d.y+d.size);
         ctx.lineTo(d.x+d.size,d.y+d.size);
         ctx.closePath(); ctx.fill();
+      });
+
+      // Draw explosions
+      explosions.forEach(exp=>{
+        // Main explosion ring
+        const alpha = exp.life;
+        ctx.strokeStyle = exp.color;
+        ctx.lineWidth = 3 + (1-exp.life)*5;
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.arc(exp.x, exp.y, exp.radius, 0, Math.PI*2);
+        ctx.stroke();
+        
+        // Inner glow
+        const gradient = ctx.createRadialGradient(exp.x, exp.y, 0, exp.x, exp.y, exp.radius);
+        gradient.addColorStop(0, exp.color.replace(')', ','+alpha*0.5+')').replace('rgb','rgba').replace('#','rgba(').replace(/([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})/, (m,r,g,b)=>parseInt(r,16)+','+parseInt(g,16)+','+parseInt(b,16)));
+        gradient.addColorStop(0.5, 'rgba(255,200,100,'+alpha*0.3+')');
+        gradient.addColorStop(1, 'rgba(255,100,0,0)');
+        ctx.fillStyle = `rgba(255,150,50,${alpha*0.4})`;
+        ctx.beginPath();
+        ctx.arc(exp.x, exp.y, exp.radius*0.8, 0, Math.PI*2);
+        ctx.fill();
+        
+        // Particles
+        exp.particles.forEach(p=>{
+          ctx.globalAlpha = p.life;
+          ctx.fillStyle = exp.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size*p.life, 0, Math.PI*2);
+          ctx.fill();
+          
+          // Particle trail
+          ctx.fillStyle = 'rgba(255,200,100,'+p.life*0.5+')';
+          ctx.beginPath();
+          ctx.arc(p.x-p.vx*2, p.y-p.vy*2, p.size*p.life*0.5, 0, Math.PI*2);
+          ctx.fill();
+        });
+        ctx.globalAlpha = 1;
       });
 
       // HUD
