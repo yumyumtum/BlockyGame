@@ -14,6 +14,37 @@
       min-height: 100vh;
       margin: 0;
       padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Mystery TV Effect - Spotlight Animation */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, transparent 30%, rgba(0,0,0,0.4) 70%);
+      animation: mysteryPulse 4s ease-in-out infinite;
+      pointer-events: none;
+      z-index: 1;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+
+    body.mystery-active::before {
+      opacity: 1;
+    }
+
+    @keyframes mysteryPulse {
+      0%, 100% {
+        transform: scale(1) rotate(0deg);
+      }
+      50% {
+        transform: scale(1.1) rotate(5deg);
+      }
     }
 
     #container {
@@ -24,6 +55,22 @@
       width: 90%;
       max-width: 500px;
       text-align: center;
+      position: relative;
+      z-index: 2;
+      transition: box-shadow 0.3s;
+    }
+
+    #container.mystery-glow {
+      animation: mysteryGlow 2s ease-in-out infinite;
+    }
+
+    @keyframes mysteryGlow {
+      0%, 100% {
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3), 0 0 20px rgba(102, 126, 234, 0.3);
+      }
+      50% {
+        box-shadow: 0 10px 40px rgba(0,0,0,0.4), 0 0 40px rgba(102, 126, 234, 0.6);
+      }
     }
 
     h1 {
@@ -63,16 +110,35 @@
       border-radius: 8px;
       cursor: pointer;
       font-size: 16px;
-      transition: background 0.3s;
+      transition: background 0.3s, transform 0.2s;
+      position: relative;
     }
 
     button:hover {
       background: #5568d3;
+      transform: translateY(-2px);
     }
 
     button:disabled {
       background: #ccc;
       cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Mystery thinking animation for buttons */
+    button.mystery-thinking {
+      animation: buttonPulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes buttonPulse {
+      0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      }
+      50% {
+        transform: scale(1.05);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+      }
     }
 
     .choice {
@@ -88,6 +154,8 @@
       font-size: 16px;
       text-align: left;
       transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
     }
 
     .choice:hover:not(:disabled) {
@@ -99,14 +167,33 @@
       cursor: not-allowed;
     }
 
+    /* Mystery thinking animation for choices */
+    .choice.mystery-thinking {
+      animation: choicePulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes choicePulse {
+      0%, 100% {
+        transform: scale(1);
+        border-color: #ddd;
+      }
+      50% {
+        transform: scale(1.02);
+        border-color: #667eea;
+        box-shadow: 0 0 15px rgba(102, 126, 234, 0.4);
+      }
+    }
+
     .choice.correct {
       background: #d4edda !important;
       border-color: #28a745 !important;
+      animation: none !important;
     }
 
     .choice.incorrect {
       background: #f8d7da !important;
       border-color: #dc3545 !important;
+      animation: none !important;
     }
 
     #loading {
@@ -156,6 +243,11 @@
 
 <div id="container">
   <h1>🎯 Trivia Challenge</h1>
+
+  <!-- Mystery TV Music -->
+  <audio id="mysteryMusic" loop>
+    <!-- Fallback: Using a simple mystery tone generated via Web Audio API -->
+  </audio>
 
   <!-- Welcome Screen -->
   <div id="welcomeScreen" class="screen active">
@@ -216,6 +308,114 @@
   let score = 0;
   const TOTAL_QUESTIONS = 5;
 
+  // Mystery Music Control using Web Audio API
+  const mysteryMusic = document.getElementById('mysteryMusic');
+  let audioContext = null;
+  let mysteryOscillator = null;
+  let mysteryGain = null;
+  let mysteryInterval = null;
+
+  // Initialize Web Audio API for mystery music
+  function initMysteryAudio() {
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+  }
+
+  // Create mystery TV show style music (like game show thinking music)
+  function playMysteryMusic() {
+    initMysteryAudio();
+    
+    if (mysteryOscillator) {
+      stopMysteryMusic();
+    }
+
+    // Create a mystery/suspense melody pattern
+    const notes = [
+      { freq: 523.25, duration: 400 }, // C5
+      { freq: 493.88, duration: 400 }, // B4
+      { freq: 440.00, duration: 400 }, // A4
+      { freq: 493.88, duration: 400 }, // B4
+      { freq: 523.25, duration: 800 }, // C5 (longer)
+    ];
+
+    let noteIndex = 0;
+
+    function playNote() {
+      const note = notes[noteIndex];
+      
+      // Create oscillator for the note
+      const osc = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(note.freq, audioContext.currentTime);
+      
+      // Envelope for smooth attack and decay
+      gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.1, audioContext.currentTime + 0.05);
+      gainNode.gain.linearRampToValueAtTime(0.05, audioContext.currentTime + note.duration / 1000 - 0.1);
+      gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + note.duration / 1000);
+      
+      osc.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      osc.start();
+      osc.stop(audioContext.currentTime + note.duration / 1000);
+      
+      noteIndex = (noteIndex + 1) % notes.length;
+    }
+
+    // Play the first note immediately
+    playNote();
+    
+    // Continue playing notes in a loop
+    mysteryInterval = setInterval(() => {
+      playNote();
+    }, 420); // Slight pause between notes
+  }
+
+  function stopMysteryMusic() {
+    if (mysteryInterval) {
+      clearInterval(mysteryInterval);
+      mysteryInterval = null;
+    }
+  }
+
+  // Enable mystery effects and music
+  function enableMysteryMode() {
+    document.body.classList.add('mystery-active');
+    document.getElementById('container').classList.add('mystery-glow');
+    
+    // Play mystery music
+    try {
+      playMysteryMusic();
+    } catch (err) {
+      console.log('Mystery music could not be played:', err);
+    }
+  }
+
+  // Disable mystery effects and music
+  function disableMysteryMode() {
+    document.body.classList.remove('mystery-active');
+    document.getElementById('container').classList.remove('mystery-glow');
+    stopMysteryMusic();
+  }
+
+  // Add mystery thinking animation to elements
+  function addMysteryAnimation(selector) {
+    document.querySelectorAll(selector).forEach(el => {
+      el.classList.add('mystery-thinking');
+    });
+  }
+
+  // Remove mystery thinking animation from elements
+  function removeMysteryAnimation(selector) {
+    document.querySelectorAll(selector).forEach(el => {
+      el.classList.remove('mystery-thinking');
+    });
+  }
+
   // Screen management
   function showScreen(screenId) {
     document.querySelectorAll('.screen').forEach(screen => {
@@ -242,6 +442,10 @@
       return;
     }
 
+    // Stop mystery effects when starting game
+    disableMysteryMode();
+    removeMysteryAnimation('button');
+
     showScreen('loadingScreen');
 
     try {
@@ -253,6 +457,9 @@
     } catch (error) {
       showScreen('welcomeScreen');
       alert('Failed to load questions. Please try again. Error: ' + error.message);
+      // Re-enable mystery mode when returning to welcome screen
+      enableMysteryMode();
+      addMysteryAnimation('#startBtn');
     }
   }
 
@@ -317,6 +524,9 @@
     choicesEl.innerHTML = '';
     nextBtn.style.display = 'none';
 
+    // Enable mystery mode while waiting for answer
+    enableMysteryMode();
+
     q.choices.forEach(choice => {
       const btn = document.createElement('button');
       btn.textContent = choice;
@@ -324,10 +534,19 @@
       btn.onclick = () => selectAnswer(btn, q.answer);
       choicesEl.appendChild(btn);
     });
+
+    // Add mystery animation to choices after a brief delay
+    setTimeout(() => {
+      addMysteryAnimation('.choice');
+    }, 100);
   }
 
   // Handle answer selection
   function selectAnswer(button, correctAnswer) {
+    // Stop mystery effects when answer is selected
+    disableMysteryMode();
+    removeMysteryAnimation('.choice');
+
     const buttons = document.querySelectorAll('.choice');
     buttons.forEach(btn => btn.disabled = true);
 
@@ -467,7 +686,22 @@
     document.getElementById('nameInput').value = playerName;
     document.getElementById('ageSelect').value = playerAge;
     showScreen('welcomeScreen');
+    
+    // Re-enable mystery mode on welcome screen
+    setTimeout(() => {
+      enableMysteryMode();
+      addMysteryAnimation('#startBtn');
+    }, 100);
   }
+
+  // Initialize mystery mode when page loads
+  window.addEventListener('DOMContentLoaded', () => {
+    // Start mystery mode on the welcome screen
+    setTimeout(() => {
+      enableMysteryMode();
+      addMysteryAnimation('#startBtn');
+    }, 500);
+  });
 </script>
 
 </body>
