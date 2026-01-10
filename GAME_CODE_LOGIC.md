@@ -126,7 +126,7 @@ function isColliding(a, b) {
 
 #### 8. Explosion System
 ```javascript
-createExplosion(x, y, size, color, canKill)
+createExplosion(x, y, size, color, canKill=true)
 ```
 - Particle-based explosion effects
 - Expanding radius animation

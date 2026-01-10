@@ -28,7 +28,7 @@ Visit the game portal and select any game from the menu.
 
 For detailed explanations of each game's code logic, see [GAME_CODE_LOGIC.md](GAME_CODE_LOGIC.md)
 
-For Chinese documentation, see [游戏代码逻辑说明.md](游戏代码逻辑说明.md)
+For Chinese documentation (游戏代码逻辑说明), see [游戏代码逻辑说明.md](%E6%B8%B8%E6%88%8F%E4%BB%A3%E7%A0%81%E9%80%BB%E8%BE%91%E8%AF%B4%E6%98%8E.md)
 
 ## 👥 Development Team
 
