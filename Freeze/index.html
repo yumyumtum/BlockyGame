@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Time Freeze Escape</title>
+<style>
+body {
+    margin: 0;
+    overflow: hidden;
+    background: black;
+    font-family: Arial, sans-serif;
+    color: white;
+}
+#ui {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 10;
+    font-size: 18px;
+}
+canvas { display:block; }
+</style>
+</head>
+<body>
+
+<div id="ui">
+Energy: <span id="energy">100</span><br>
+Find the Portal. Time moves when you move.
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+/* ---------------- WORLD SETUP ---------------- */
+
+const WORLD_WIDTH = 3000;
+const WORLD_HEIGHT = 3000;
+
+let camera = { x: 0, y: 0 };
+
+let keys = {};
+let energy = 100;
+let gameOver = false;
+let win = false;
+
+document.addEventListener("keydown", e => keys[e.key] = true);
+document.addEventListener("keyup", e => keys[e.key] = false);
+
+/* ---------------- PLAYER ---------------- */
+
+const player = {
+    x: 200,
+    y: 200,
+    size: 26,
+    speed: 3.2
+};
+
+/* ---------------- PORTAL ---------------- */
+
+const portal = {
+    x: WORLD_WIDTH - 300,
+    y: WORLD_HEIGHT - 300,
+    radius: 45,
+    pulse: 0
+};
+
+/* ---------------- ENEMIES ---------------- */
+
+const enemies = [];
+for (let i = 0; i < 25; i++) { // MANY MORE ENEMIES
+    enemies.push({
+        x: Math.random() * WORLD_WIDTH,
+        y: Math.random() * WORLD_HEIGHT,
+        size: 24,
+        dx: (Math.random() - 0.5) * 2,
+        dy: (Math.random() - 0.5) * 2
+    });
+}
+
+/* ---------------- MOVEMENT ---------------- */
+
+function movePlayer() {
+    let moved = false;
+
+    if (keys["ArrowUp"]) { player.y -= player.speed; moved = true; }
+    if (keys["ArrowDown"]) { player.y += player.speed; moved = true; }
+    if (keys["ArrowLeft"]) { player.x -= player.speed; moved = true; }
+    if (keys["ArrowRight"]) { player.x += player.speed; moved = true; }
+
+    // keep inside world
+    player.x = Math.max(0, Math.min(WORLD_WIDTH, player.x));
+    player.y = Math.max(0, Math.min(WORLD_HEIGHT, player.y));
+
+    return moved;
+}
+
+/* ---------------- ENEMY AI ---------------- */
+
+function updateEnemies(allowMove) {
+    if (!allowMove) return;
+
+    enemies.forEach(e => {
+        // simple “notice player” behavior
+        const distX = player.x - e.x;
+        const distY = player.y - e.y;
+        const dist = Math.hypot(distX, distY);
+
+        if (dist < 300) {
+            e.dx += distX * 0.0005;
+            e.dy += distY * 0.0005;
+        }
+
+        e.x += e.dx;
+        e.y += e.dy;
+
+        // bounce off walls
+        if (e.x < 0 || e.x > WORLD_WIDTH) e.dx *= -1;
+        if (e.y < 0 || e.y > WORLD_HEIGHT) e.dy *= -1;
+    });
+}
+
+/* ---------------- COLLISIONS ---------------- */
+
+function checkCollisions() {
+    enemies.forEach(e => {
+        if (
+            player.x < e.x + e.size &&
+            player.x + player.size > e.x &&
+            player.y < e.y + e.size &&
+            player.y + player.size > e.y
+        ) gameOver = true;
+    });
+
+    const d = Math.hypot(player.x - portal.x, player.y - portal.y);
+    if (d < portal.radius) win = true;
+}
+
+/* ---------------- CAMERA ---------------- */
+
+function updateCamera() {
+    camera.x = player.x - canvas.width / 2;
+    camera.y = player.y - canvas.height / 2;
+
+    camera.x = Math.max(0, Math.min(WORLD_WIDTH - canvas.width, camera.x));
+    camera.y = Math.max(0, Math.min(WORLD_HEIGHT - canvas.height, camera.y));
+}
+
+/* ---------------- DRAWING ---------------- */
+
+function drawGrid() {
+    ctx.strokeStyle = "#111";
+    for (let x = 0; x < WORLD_WIDTH; x += 80) {
+        ctx.beginPath();
+        ctx.moveTo(x - camera.x, -camera.y);
+        ctx.lineTo(x - camera.x, WORLD_HEIGHT - camera.y);
+        ctx.stroke();
+    }
+    for (let y = 0; y < WORLD_HEIGHT; y += 80) {
+        ctx.beginPath();
+        ctx.moveTo(-camera.x, y - camera.y);
+        ctx.lineTo(WORLD_WIDTH - camera.x, y - camera.y);
+        ctx.stroke();
+    }
+}
+
+function drawPlayer() {
+    ctx.fillStyle = "#4cc9f0";
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = "#4cc9f0";
+    ctx.fillRect(player.x - camera.x, player.y - camera.y, player.size, player.size);
+    ctx.shadowBlur = 0;
+}
+
+function drawEnemies() {
+    enemies.forEach(e => {
+        ctx.fillStyle = "#ff4d4d";
+        ctx.fillRect(e.x - camera.x, e.y - camera.y, e.size, e.size);
+    });
+}
+
+function drawPortal() {
+    portal.pulse += 0.05;
+
+    const r = portal.radius + Math.sin(portal.pulse) * 6;
+
+    const gradient = ctx.createRadialGradient(
+        portal.x - camera.x, portal.y - camera.y, 5,
+        portal.x - camera.x, portal.y - camera.y, r
+    );
+
+    gradient.addColorStop(0, "#a78bfa");
+    gradient.addColorStop(1, "rgba(167,139,250,0)");
+
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(portal.x - camera.x, portal.y - camera.y, r, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+/* ---------------- GAME LOOP ---------------- */
+
+function gameLoop() {
+    if (gameOver || win) return;
+
+    ctx.fillStyle = "#050505";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const freezing = keys[" "] && energy > 0;
+    if (freezing) energy -= 0.25;
+
+    const moved = movePlayer();
+    updateEnemies(moved && !freezing);
+    updateCamera();
+    checkCollisions();
+
+    drawGrid();
+    drawPortal();
+    drawEnemies();
+    drawPlayer();
+
+    document.getElementById("energy").textContent = Math.floor(energy);
+
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+
+/* ---------------- END SCREEN ---------------- */
+
+setInterval(() => {
+    if (gameOver || win) {
+        ctx.fillStyle = "white";
+        ctx.font = "60px Arial";
+        ctx.fillText(
+            win ? "ESCAPED." : "CAUGHT.",
+            canvas.width / 2 - 150,
+            canvas.height / 2
+        );
+    }
+}, 100);
+</script>
+
+</body>
+</html>

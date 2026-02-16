@@ -4,6 +4,18 @@
   <meta charset="UTF-8">
   <title>Cyclops Gamers Studio</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Bungee&family=Space+Grotesk:wght@400;600&display=swap');
+
+    :root {
+      --ink: #f7f7f2;
+      --muted: #b8c0cc;
+      --accent: #25f1c4;
+      --accent-2: #ffb84d;
+      --panel: rgba(5, 12, 18, 0.8);
+      --panel-edge: rgba(37, 241, 196, 0.35);
+      --card: rgba(12, 22, 30, 0.85);
+    }
+
     /* reset */
     html, body { margin:0; padding:0; height:100% }
 
@@ -11,60 +23,223 @@
     body {
       background: url('cyclopsgamers.png') no-repeat center center fixed;
       background-size: cover;
-      font-family: sans-serif;
-      color: #fff;
-      text-shadow: 1px 1px 2px #000;
+      font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+      color: var(--ink);
     }
 
     /* dark overlay */
     .overlay {
-      position: fixed; top:0; left:0;
-      width:100%; height:100%;
-      background: rgba(0,0,0,0.6);
+      min-height:100%;
+      background: linear-gradient(180deg, rgba(0,0,0,0.78), rgba(0,0,0,0.55) 55%, rgba(0,0,0,0.85));
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
+      padding: 48px 20px;
+      box-sizing: border-box;
     }
 
-    h1 { font-size: 4em; margin: 0.2em 0 }
-    h2 { font-size: 2em; margin: 0.5em 0 1.2em }
+    .shell {
+      width: min(980px, 92vw);
+      background: var(--panel);
+      border: 1px solid var(--panel-edge);
+      border-radius: 22px;
+      padding: 28px 28px 22px;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.45);
+      backdrop-filter: blur(6px);
+    }
+
+    h1 {
+      font-family: 'Bungee', 'Space Grotesk', sans-serif;
+      font-size: clamp(2.2rem, 5vw, 3.6rem);
+      margin: 0 0 6px;
+      letter-spacing: 1px;
+      text-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    }
+    h2 {
+      font-size: clamp(1rem, 2.4vw, 1.4rem);
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .count {
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+
+    .filter {
+      flex: 1;
+      min-width: 220px;
+    }
+
+    .filter input {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(0,0,0,0.35);
+      color: var(--ink);
+      font-size: 1rem;
+      outline: none;
+    }
+
+    .filter input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(37, 241, 196, 0.2);
+    }
 
     /* game-list */
     ul { list-style: none; padding: 0; margin: 0 }
     li { padding: 0 }
 
-    /* button-style links */
-    a {
-      display: inline-block;
-      margin: 0.6em 0;
-      padding: 0.5em 1em;
-      color: #0f0;
+    .games {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 14px;
+      max-height: min(52vh, 440px);
+      overflow: auto;
+      padding-right: 6px;
+    }
+
+    /* card-style links */
+    a.game-card {
+      display: block;
+      color: var(--ink);
       text-decoration: none;
-      font-size: 1.3em;
-      border: 2px solid #0f0;
-      border-radius: 0.4em;
-      transition: background 0.2s;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      background: var(--card);
+      overflow: hidden;
+      transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
     }
-    a:hover {
-      background: rgba(0,255,0,0.2);
+    a.game-card:hover {
+      transform: translateY(-3px);
+      border-color: rgba(37, 241, 196, 0.6);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.3);
     }
-    a:focus { outline: none }
+    a.game-card:focus { outline: none }
+
+    .thumb {
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Bungee', 'Space Grotesk', sans-serif;
+      font-size: 1.05rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #061018;
+    }
+
+    .thumb--dodge {
+      background: linear-gradient(135deg, #ff4d4d, #ffb84d 60%, #25f1c4);
+    }
+    .thumb--space {
+      background: radial-gradient(circle at 30% 30%, #ffd166, #ef476f 35%, #1b3a57 70%);
+      color: #0b0f1a;
+    }
+    .thumb--duck {
+      background: linear-gradient(135deg, #ffd166, #9bf6ff 55%, #bde0fe);
+    }
+    .thumb--flappy {
+      background: linear-gradient(135deg, #70c5ce, #57a773 55%, #2b9348);
+      color: #052214;
+    }
+    .thumb--sniper {
+      background: linear-gradient(135deg, #c1121f, #780000 55%, #0b0f1a);
+      color: #fdf0d5;
+    }
+    .thumb--sigma {
+      background: linear-gradient(135deg, #adb5bd, #6c757d 55%, #343a40);
+      color: #101417;
+    }
+    .thumb--trivia {
+      background: linear-gradient(135deg, #667eea, #764ba2 55%, #2b1055);
+      color: #f8f9ff;
+    }
+    .thumb--freeze {
+      background: linear-gradient(135deg, #4cc9f0, #4361ee 55%, #0b132b);
+      color: #e6f6ff;
+    }
+    .thumb--default {
+      background: linear-gradient(135deg, #ffb84d, #25f1c4 55%, #1b263b);
+    }
+
+    .card-body {
+      padding: 14px 16px 18px;
+    }
+
+    .card-title {
+      font-size: 1.1rem;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .card-desc {
+      font-size: 0.92rem;
+      color: var(--muted);
+      min-height: 40px;
+      line-height: 1.4;
+    }
+
+    .card-tags {
+      margin-top: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 4px 8px;
+      font-size: 0.72rem;
+      border-radius: 999px;
+      font-weight: 600;
+      background: rgba(255,255,255,0.12);
+      color: var(--ink);
+    }
+
+    .pill--new {
+      background: var(--accent-2);
+      color: #081116;
+    }
+
+    @media (max-width: 720px) {
+      .shell { padding: 22px 18px 18px; }
+      .games { max-height: 55vh; }
+    }
   </style>
 </head>
 <body>
   <div class="overlay">
-    <h1>Cyclops Gamers</h1>
-    <h2>Select Your Game</h2>
-    <ul id="game-list">
-      <li>Loading games…</li>
-    </ul>
+    <div class="shell">
+      <h1>Cyclops Gamers</h1>
+      <h2>Select your next escape.</h2>
+      <div class="topbar">
+        <div class="filter">
+          <input id="game-filter" type="text" placeholder="Filter games...">
+        </div>
+        <div class="count" id="game-count">0 games</div>
+      </div>
+      <ul id="game-list" class="games">
+        <li>Loading games…</li>
+      </ul>
+    </div>
   </div>
 
   <script>
     async function detectGames() {
       // fallback when we're on file:// or scraping fails
-      const known = ['Dodge_Games','SpaceShip','DuckAdventure','FlappyPoop','SniperGame','SigmaSniper','Trivia'];
+      const known = ['Dodge_Games','SpaceShip','DuckAdventure','FlappyPoop','SniperGame','SigmaSniper','Trivia','Freeze'];
       let dirs = [];
 
       // attempt HTTP directory scrape (only works if you host it with dir-indexes enabled)
@@ -101,25 +276,142 @@
     }
 
     window.addEventListener('DOMContentLoaded', async () => {
-      const list  = document.getElementById('game-list');
+      const list = document.getElementById('game-list');
+      const count = document.getElementById('game-count');
+      const filter = document.getElementById('game-filter');
       const games = await detectGames();
       list.innerHTML = '';
 
       if (games.length === 0) {
         list.innerHTML = '<li>No games found.</li>';
+        count.textContent = '0 games';
         return;
       }
 
-      for (const g of games) {
-        const li = document.createElement('li');
-        const a  = document.createElement('a');
+      const info = {
+        Dodge_Games: {
+          title: 'Dodge Games',
+          desc: 'Dodge falling blocks, level up, and unleash power-ups.',
+          tags: ['Arcade', 'Survival'],
+          theme: 'dodge'
+        },
+        SpaceShip: {
+          title: 'SpaceShip',
+          desc: 'Starfield shooter with lasers, rockets, and boss chaos.',
+          tags: ['Shooter', 'Space'],
+          theme: 'space'
+        },
+        DuckAdventure: {
+          title: 'Duck Adventure',
+          desc: 'Grid chase: grab stars, dodge puddles, and outrun water shots.',
+          tags: ['Grid', 'Chase'],
+          theme: 'duck'
+        },
+        FlappyPoop: {
+          title: 'Flappy Poop',
+          desc: 'Tap to flap through tight pipes and chase a high score.',
+          tags: ['Arcade', 'Precision'],
+          theme: 'flappy'
+        },
+        SniperGame: {
+          title: 'Sniper Game',
+          desc: 'Hold steady, time the shot, and drop the moving target.',
+          tags: ['Sniper', 'Aim'],
+          theme: 'sniper'
+        },
+        SigmaSniper: {
+          title: 'Sigma Sniper',
+          desc: 'First-person arena with scope mechanics and 3D enemies.',
+          tags: ['FPS', '3D'],
+          theme: 'sigma'
+        },
+        Trivia: {
+          title: 'Trivia',
+          desc: 'Five quick questions, streaks, and a leaderboard climb.',
+          tags: ['Quiz', 'Brain'],
+          theme: 'trivia'
+        },
+        Freeze: {
+          title: 'Freeze',
+          desc: 'Move to advance time, freeze enemies, and find the portal.',
+          tags: ['Stealth', 'Puzzle'],
+          theme: 'freeze'
+        }
+      };
 
-        // **point directly** at the index.html
-        a.href         = `./${g}/index.html`;
-        a.textContent  = g.replace(/_/g,' ');
-        li.appendChild(a);
-        list.appendChild(li);
-      }
+      const render = (items) => {
+        list.innerHTML = '';
+        count.textContent = `${items.length} game${items.length === 1 ? '' : 's'}`;
+        for (const g of items) {
+          const data = info[g] || {
+            title: g.replace(/_/g,' '),
+            desc: 'A fresh challenge from Cyclops Gamers Studio.',
+            tags: ['Arcade'],
+            theme: 'default'
+          };
+          const li = document.createElement('li');
+          const a = document.createElement('a');
+          const thumb = document.createElement('div');
+          const body = document.createElement('div');
+          const title = document.createElement('div');
+          const desc = document.createElement('div');
+          const tags = document.createElement('div');
+
+          a.href = `./${g}/index.html`;
+          a.className = 'game-card';
+
+          thumb.className = `thumb thumb--${data.theme}`;
+          thumb.textContent = data.title;
+
+          body.className = 'card-body';
+          title.className = 'card-title';
+          title.textContent = data.title;
+
+          desc.className = 'card-desc';
+          desc.textContent = data.desc;
+
+          tags.className = 'card-tags';
+          data.tags.forEach(t => {
+            const pill = document.createElement('span');
+            pill.className = 'pill';
+            pill.textContent = t;
+            tags.appendChild(pill);
+          });
+
+          if (g === 'Freeze') {
+            const pill = document.createElement('span');
+            pill.className = 'pill pill--new';
+            pill.textContent = 'NEW';
+            tags.appendChild(pill);
+          }
+
+          body.appendChild(title);
+          body.appendChild(desc);
+          body.appendChild(tags);
+
+          a.appendChild(thumb);
+          a.appendChild(body);
+
+          li.appendChild(a);
+          list.appendChild(li);
+        }
+      };
+
+      render(games);
+
+      filter.addEventListener('input', () => {
+        const q = filter.value.trim().toLowerCase();
+        if (!q) {
+          render(games);
+          return;
+        }
+        render(games.filter(g => {
+          const data = info[g] || { title: g.replace(/_/g,' '), desc: '' };
+          return g.toLowerCase().includes(q) ||
+            data.title.toLowerCase().includes(q) ||
+            data.desc.toLowerCase().includes(q);
+        }));
+      });
     });
   </script>
 </body>
