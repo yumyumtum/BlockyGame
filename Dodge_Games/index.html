@@ -11,12 +11,14 @@
       background: #111;
       color: white;
       font-family: Arial, sans-serif;
+      touch-action: none;
     }
     canvas {
       display: block;
       margin: 0 auto;
       background: #222;
       border: 2px solid #fff;
+      touch-action: none;
     }
     #menu, #helpOverlay {
       position: absolute;
@@ -49,6 +51,61 @@
       margin: 10px 0;
       font-size: 16px;
     }
+
+    #mobileControls {
+      position: fixed;
+      right: 16px;
+      bottom: 18px;
+      display: none;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+      z-index: 12;
+      pointer-events: none;
+    }
+    #mobileControls button {
+      pointer-events: auto;
+      padding: 12px 16px;
+      font-size: 14px;
+      background: rgba(0,0,0,0.65);
+      color: #fff;
+      border: 2px solid #fff;
+      border-radius: 10px;
+    }
+    #joystick {
+      position: fixed;
+      left: 16px;
+      bottom: 18px;
+      width: 120px;
+      height: 120px;
+      display: none;
+      z-index: 12;
+      touch-action: none;
+    }
+    #joystickBase {
+      position: absolute;
+      inset: 0;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.35);
+    }
+    #joystickKnob {
+      position: absolute;
+      width: 48px;
+      height: 48px;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: rgba(255,255,255,0.2);
+      border: 2px solid #fff;
+    }
+    .touch #mobileControls { display: flex; }
+    .touch #joystick { display: block; }
+    @media (pointer: coarse) {
+      #mobileControls { display: flex; }
+      #joystick { display: block; }
+    }
   </style>
 </head>
 <body>
@@ -72,6 +129,17 @@
     <p>Collect <span style="color:blue">Blue</span> blocks for health & level up</p>
     <p>Avoid <span style="color:green">Green</span> blocks!</p>
     <p>Press <strong>H</strong> again to close this help.</p>
+  </div>
+
+  <div id="mobileControls">
+    <button id="btnArrow">Arrow</button>
+    <button id="btnMissile">Missile</button>
+    <button id="btnHelp">Help</button>
+  </div>
+
+  <div id="joystick">
+    <div id="joystickBase"></div>
+    <div id="joystickKnob"></div>
   </div>
 
   <audio id="bgMusic" preload="auto"></audio>
@@ -128,21 +196,115 @@
       gameLoop();
     }
 
+    function enableTouchUI() {
+      document.body.classList.add('touch');
+    }
+
+    if (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) {
+      enableTouchUI();
+    }
+
+    const joystick = document.getElementById('joystick');
+    const joystickKnob = document.getElementById('joystickKnob');
+    const joystickState = { active: false, id: null, centerX: 0, centerY: 0, dx: 0, dy: 0, max: 40 };
+
+    function updateKnob(dx, dy) {
+      joystickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    }
+
+    function getTouchById(list, id) {
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].identifier === id) return list[i];
+      }
+      return null;
+    }
+
+    function fireArrow() {
+      if (player.level >= 5)
+        arrows.push({ x:player.x+18, y:player.y, width:4, height:10, speed:7, color:'yellow' });
+    }
+
+    function fireMissile() {
+      if (player.level >= 10)
+        missiles.push({ x:player.x+15, y:player.y, width:10, height:20, speed:5, color:'orange' });
+    }
+
+    function toggleHelp() {
+      if (!gameRunning) return;
+      showHelp = !showHelp;
+      help.style.display = showHelp ? 'block' : 'none';
+    }
+
     canvas.addEventListener('click',()=>{ if (!gameRunning) initGame(); });
+    canvas.addEventListener('touchstart', (e) => {
+      if (!gameRunning) initGame();
+      enableTouchUI();
+      e.preventDefault();
+    }, { passive: false });
+
+    if (joystick) {
+      joystick.addEventListener('touchstart', (e) => {
+        const t = e.touches[0];
+        const rect = joystick.getBoundingClientRect();
+        joystickState.active = true;
+        joystickState.id = t.identifier;
+        joystickState.centerX = rect.left + rect.width / 2;
+        joystickState.centerY = rect.top + rect.height / 2;
+        e.preventDefault();
+      }, { passive: false });
+
+      joystick.addEventListener('touchmove', (e) => {
+        if (!joystickState.active) return;
+        const t = getTouchById(e.touches, joystickState.id);
+        if (!t) return;
+        const dx = t.clientX - joystickState.centerX;
+        const dy = t.clientY - joystickState.centerY;
+        const dist = Math.hypot(dx, dy);
+        const cap = joystickState.max;
+        const scale = dist > cap ? cap / dist : 1;
+        joystickState.dx = dx * scale;
+        joystickState.dy = dy * scale;
+        updateKnob(joystickState.dx, joystickState.dy);
+        e.preventDefault();
+      }, { passive: false });
+
+      const releaseJoystick = () => {
+        joystickState.active = false;
+        joystickState.id = null;
+        joystickState.dx = 0;
+        joystickState.dy = 0;
+        updateKnob(0, 0);
+      };
+
+      joystick.addEventListener('touchend', releaseJoystick, { passive: false });
+      joystick.addEventListener('touchcancel', releaseJoystick, { passive: false });
+    }
+
     document.addEventListener('keydown', e => {
       keys[e.key] = true;
       // Toggle help overlay
-      if (e.key.toLowerCase() === 'h' && gameRunning) {
-        showHelp = !showHelp;
-        help.style.display = showHelp ? 'block' : 'none';
-      }
+      if (e.key.toLowerCase() === 'h') toggleHelp();
       // Fire arrows or missiles
-      if (e.key==='5' && player.level>=5) 
-        arrows.push({ x:player.x+18, y:player.y, width:4, height:10, speed:7, color:'yellow' });
-      if (e.key==='1' && player.level>=10)
-        missiles.push({ x:player.x+15, y:player.y, width:10, height:20, speed:5, color:'orange' });
+      if (e.key==='5') fireArrow();
+      if (e.key==='1') fireMissile();
     });
     document.addEventListener('keyup', e => keys[e.key] = false);
+
+    const btnArrow = document.getElementById('btnArrow');
+    const btnMissile = document.getElementById('btnMissile');
+    const btnHelp = document.getElementById('btnHelp');
+    if (btnArrow) {
+      btnArrow.addEventListener('click', fireArrow);
+      btnArrow.addEventListener('touchstart', (e) => { fireArrow(); e.preventDefault(); }, { passive: false });
+    }
+    if (btnMissile) {
+      btnMissile.addEventListener('click', fireMissile);
+      btnMissile.addEventListener('touchstart', (e) => { fireMissile(); e.preventDefault(); }, { passive: false });
+    }
+    if (btnHelp) {
+      btnHelp.addEventListener('click', toggleHelp);
+      btnHelp.addEventListener('touchstart', (e) => { toggleHelp(); e.preventDefault(); }, { passive: false });
+    }
 
     function drawPlayer(){
       const cx=player.x+20, cy=player.y+20, r=20;
@@ -258,6 +420,19 @@
       if(keys['ArrowRight'] && player.x+player.width<canvas.width) player.x+=player.speed;
       if(keys['ArrowUp'] && player.y>0) player.y-=player.speed;
       if(keys['ArrowDown'] && player.y+player.height<canvas.height) player.y+=player.speed;
+
+      if (joystickState.active) {
+        const dist = Math.hypot(joystickState.dx, joystickState.dy);
+        if (dist > 2) {
+          const nx = joystickState.dx / dist;
+          const ny = joystickState.dy / dist;
+          player.x += nx * player.speed;
+          player.y += ny * player.speed;
+        }
+      }
+
+      player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+      player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
     }
 
     function drawProjectiles(){
